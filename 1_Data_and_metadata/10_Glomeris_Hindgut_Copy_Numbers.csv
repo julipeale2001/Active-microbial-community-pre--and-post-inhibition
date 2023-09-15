@@ -1,0 +1,13 @@
+Code, Total Copy Numbers of 16S rRNA,16S rRNA Copies/1 ng DNA,16S rRNA Copies/mg sample weight,Treatment,Replicate,Individual
+G1D,3.45E+06,1.39E+05,1.14E+05,Control,1,1
+G1I,3.84E+05,1.39E+05,1.17E+05,Control,2,2
+G1H ,3.61E+06,8.82E+05,7.41E+05,Control,3,3
+G2A ,1.17E+06,3.00E+06,7.89E+06,Sterile,1,4
+G2D,6.61E+06,9.50E+05,1.09E+06,Sterile,2,5
+G2F,3.79E+07,5.06E+06,5.01E+06,Sterile,3,6
+G3B,2.69E+05,4.92E+04,4.60E+04,2X Diluted,1,7
+G3C,1.73E+04,4.95E+03,4.30E+03,2X Diluted,2,8
+G3F ,7.37E+03,1.36E+05,1.21E+05,2X Diluted,3,9
+G4F,2.83E+06,1.63E+05,9.53E+04,5X Diluted,1,10
+G4H,1.27E+06,1.91E+05,1.26E+05,5X Diluted,2,11
+G4J,9.02E+03,1.40E+03,8.12E+02,5X Diluted,3,12
