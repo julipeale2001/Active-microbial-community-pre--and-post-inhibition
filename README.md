@@ -1,0 +1,2 @@
+# Active-microbial-community-pre--and-post-inhibition
+Analysis of microbial community from the hindguts and faeces of E. pulchripes and G. connexa after anitbiotics and 2-bromo-ethanesulfate treatments. It involves analysing weight of millipedes, faecal counts, bacterial total colony counts, 16S rRNA copy number, methane production after antibiotics treatment, 16S rRNA sequence, mcrA copy and RNA-SIP.
