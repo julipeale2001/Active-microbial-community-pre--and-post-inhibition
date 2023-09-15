@@ -192,6 +192,3 @@ For analysis of microbial community from the hindguts and faeces of E. pulchripe
 
 
 37_SIP_diff_abund_between_DESeq2.Qmd
-
-
-![image](https://github.com/julipeale2001/Active-microbial-community-pre--and-post-inhibition/assets/57350508/f424b73a-d6e3-41a8-9821-60d6b6300412)
