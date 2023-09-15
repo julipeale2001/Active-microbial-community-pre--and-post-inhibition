@@ -1,0 +1,785 @@
+---
+title: "Methanogenesis supression"
+author: "Nweze Julius"
+date: "`r Sys.Date()`"
+output:
+  rmarkdown::html_document:
+    code_folding: show
+    dev: png
+    df_print: kable
+    fig_caption: yes
+    highlight: pygments
+    keep_md: yes
+    number_sections: no
+    theme: flatly
+    toc: yes
+    toc_depth: 5
+    toc_float: yes
+  html_document:
+    df_print: paged
+    toc: yes
+    toc_depth: '5'
+link-citations: yes
+csl: fems-microbiology-ecology.csl
+subtitle: CH4 inhibition analysis
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r libraries, include=F}
+# Load libraries
+#.libPaths(c('~/R/library', .libPaths())) # Uncomment if you have no write access to R path
+
+repo <- "http://cran.wu.ac.at"
+lib.loc <- Sys.getenv("R_LIBS_USER")
+
+update.packages(
+    lib.loc, 
+    repos = repo,
+    ask = FALSE
+)
+
+.cran_libs <- c(
+ "knitr", # A General-Purpose Package for Dynamic Report Generation in R
+ "kableExtra", # Construct Complex Table with 'kable' and Pipe Syntax
+#  "rmarkdown", # Dynamic Documents for R
+  "extrafont", # for extra figure fonts
+  "tidyverse", # for dplyr forcats ggplot2 readr tibble
+  "readODS", # #Read ODS Files
+ "grid", # The Grid Graphics Package
+#  "magrittr", # pipes
+  "scales", # Generic plot scaling methods
+  "svglite", # for svg files
+#  "vagen",
+ "car", # Companion to Applied Regression
+ "rcompanion", #Functions to Support Extension Education Program Evaluation
+ "multcomp", # Simultaneous Inference in General Parametric Models
+ "nlme", # Fit Linear Model Using Generalized Least Squares
+ "ggResidpanel", # Panels and Interactive Versions of Diagnostic Plots using
+ "emmeans", # Estimated Marginal Means, aka Least-Squares Means
+"performance" # Assessment of Regression Models Performance 
+) 
+
+.inst <- .cran_libs %in% installed.packages()
+if (any(!.inst)) {
+   install.packages(.cran_libs[!.inst],
+                    repos = repo,
+                    lib = lib.loc)
+}
+
+.bioc_libs <- c(
+  #"multtest", #Resampling-based multiple hypothesis testing
+)
+
+.bioc_inst <- .bioc_libs %in% installed.packages()
+if (any(!.bioc_inst)) {
+   if (!requireNamespace("BiocManager", quietly = TRUE))
+   install.packages("BiocManager")
+   BiocManager::install(ask = F, lib = lib.loc)  # upgrade bioC packages
+   BiocManager::install(.bioc_libs[!.bioc_inst], ask = F, lib = lib.loc)
+}
+
+.local_libs <- c()
+
+.inst <- names(.local_libs) %in% installed.packages()
+if (any(!.inst)) {
+   install.packages(paste0("~/R/", .local_libs[!.inst]) ,repos = NULL, type = "source", lib = lib.loc)
+}
+
+.github_libs <- c(
+  "wilkelab/ggtext", # Improved text rendering support for 'ggplot2' 
+  "ACCLAB/dabestr" # Data Analysis using Bootstrap-Coupled Estimation 
+)
+
+.github_lib_names <- stringr::str_replace(.github_libs, ".*/(.*)$", "\\1")
+
+.github_inst <- .github_lib_names %in% installed.packages()
+if (any(!.github_inst)) {
+  devtools::install_github(.github_libs[!.github_inst],
+                           lib = lib.loc,
+                           dependencies = TRUE)
+}
+
+# Load packages into session, and print package version
+(loaded.libs <- sapply(c(.cran_libs, .bioc_libs, names(.local_libs), .github_lib_names), require, character.only = TRUE))
+if (!all(loaded.libs)) {stop(paste("Package(s):", names(loaded.libs[loaded.libs == FALSE]), "could not be loaded"))}
+sapply(c(.cran_libs, .bioc_libs, names(.local_libs), .github_lib_names), packageVersion)
+```
+
+```{r style settings, include=F}
+options(width = 90, knitr.table.format = "html") 
+opts_chunk$set(
+  warning = FALSE,
+  message = FALSE,
+  cache = TRUE,
+  dev = "svglite",
+  fig.ext = "svg",
+  dpi = 300,
+#  fig.width = 12,
+#  fig.height = 8,
+  cache.path = "Methanogenesis_cache/",
+  fig.path = "Methanogenesis_figs/"
+)
+f_name <- "DejaVu Sans" #sub("\\s//", "", f_name)
+f_size <- 14
+font_import(pattern = "DejaVuSans", prompt = FALSE)
+loadfonts() # registers fonts
+theme_set(theme_bw(base_size = f_size, base_family = f_name)) # set theme for plots
+pom4 <- ggpomological:::pomological_palette[c(2, 9, 3, 1)] # set colours
+```
+
+```{r functions, include=F}
+PlotLmResid <- function(lm.df, which = c(1:6), mfrow = c(3, 2)){
+
+  if (length(levels(as.factor(lm.df$.fitted))) < 10) {# if number of unique x values is <10 just draw a line through the means
+    smoother <- stat_summary(fun = mean, colour = "red", geom = "line")
+  } else smoother <- stat_smooth(method = "loess", geom = "smooth", se = FALSE, colour = "firebrick", size = 1)
+  
+  # residuals vs fitted
+  g1 <- ggplot(lm.df, aes(.fitted, .resid)) +
+    geom_point()  +
+    smoother + 
+    geom_hline(yintercept = 0, linetype = 2, size = .2) +
+    scale_x_continuous("Fitted Values") +
+    scale_y_continuous("Residual") +
+    labs(title = "Residuals vs Fitted")
+  
+  # normal qq
+  a <- quantile(lm.df$.stdresid, c(0.25, 0.75), na.rm = TRUE)
+  b <- qnorm(c(0.25, 0.75))
+  slope <- diff(a)/diff(b)
+  int <- a[1] - slope * b[1]
+  g2 <- ggplot(lm.df, aes(sample = .stdresid)) +
+    stat_qq() +
+    geom_abline(slope = slope, intercept = int, colour = "firebrick", size = 1) +
+      scale_x_continuous("Theoretical Quantiles") +
+      scale_y_continuous("Standardized Quantiles") +
+      labs(title = "Normal Q-Q")
+ 
+  # scale-location
+  g3 <- ggplot(lm.df, aes(.fitted, sqrt(abs(.stdresid)))) +
+    geom_point() +
+    smoother +
+    scale_x_continuous("Fitted Values") +
+    scale_y_continuous("Root of Standardized Residuals") +
+    labs(title = "Scale-Location")
+ 
+  # residuals vs leverage
+  g4 <- ggplot(lm.df, aes(factors, .stdresid)) +
+    geom_point() +
+    smoother +
+    geom_hline(yintercept = 0, linetype = 2, size = .2) +
+    scale_x_continuous("Factor Level Combinations") +
+    scale_y_continuous("Standardized Residuals") +
+    labs(title = "Residuals vs Factor Levels")
+ 
+#   # cook's distance
+#   g5 <-  ggplot(lm.df, aes(rows, .cooksd, ymin=0, ymax=.cooksd)) +
+#     geom_point() + geom_linerange() +
+#     scale_x_continuous("Observation Number") +
+#     scale_y_continuous("Cook's distance") +
+#     labs(title="Cook's Distance")  
+  
+  # cooksd vs leverage
+  g5 <- ggplot(lm.df, aes(factors, .cooksd)) +
+    geom_point() +
+    smoother +
+    scale_x_continuous("Factor Level Combinations") +
+    scale_y_continuous("Cook's distance") +
+    labs(title = "Cook's dist vs Leverage")
+  
+  # g6 <- PlotACF(lm.df)
+  bw <- diff(range(lm.df$.resid)) / (2 * IQR(lm.df$.resid) / length(lm.df$.resid) ^ (1/3))
+  sshist <- function(x){ # optimise bins
+  # 2006 Author Hideaki Shimazaki
+  # Department of Physics, Kyoto University
+  # shimazaki at ton.scphys.kyoto-u.ac.jp
+	N <- 2 : 100
+	C <- numeric(length(N))
+	D <- C
+
+	for (i in 1:length(N)) {
+		D[i] <- diff(range(x)) / N[i]
+
+		edges = seq(min(x), max(x), length=N[i])
+		hp <- hist(x, breaks = edges, plot=FALSE)
+		ki <- hp$counts
+
+		k <- mean(ki)
+		v <- sum((ki-k) ^ 2) / N[i]
+
+		C[i] <- (2 * k-v) / D[i] ^ 2	#Cost Function
+	}
+
+	idx <- which.min(C)
+	optD <- D[idx]
+
+	bins <- seq(min(x), max(x), length=N[idx])
+	# h = hist(x, breaks = bins)
+	# rug(x)
+
+	return(bins)
+  }
+  
+  bins <- sshist(lm.df$.resid)
+  g6 <- ggplot(lm.df, aes(.resid)) + 
+    geom_histogram(breaks = bins)
+ 
+  plots <- list(g1, g2, g3, g4, g5, g6)
+ 
+  # making the plots
+  grid.newpage()
+ 
+  if (prod(mfrow) > 1) {
+    mypos <- expand.grid(1:mfrow[1], 1:mfrow[2])
+    mypos <- mypos[with(mypos, order(Var1)), ]
+    pushViewport(viewport(layout = grid.layout(mfrow[1], mfrow[2])))
+    formatter <- function(.){}
+  } else {
+    mypos <- data.frame(matrix(1, length(which), 2))
+    pushViewport(viewport(layout = grid.layout(1, 1)))
+    formatter <- function(.) {
+      .dontcare <- readline("Hit <Return> to see next plot: ")
+      grid.newpage()
+    }
+  }
+ 
+  j <- 1
+  for (i in which) {
+    formatter()
+    print(plots[[i]], vp = viewport(layout.pos.row = mypos[j, ][1], layout.pos.col = mypos[j, ][2]))
+    j <- j + 1
+  }
+}
+
+PlotACF <- function(lm.df){
+  ## generate ACF plot for lm and lme
+  # compute acf without plotting
+  acz <- acf(lm.df$.resid, plot = F)
+  # convert to data frame
+  acd <- data.frame(lag = acz$lag, acf = acz$acf)
+  # use data frame for ggplot
+  ggplot(acd, aes(lag, acf)) + 
+    geom_bar(colour = "black", fill = "black", stat = "identity", position = "dodge", width = 0.01) +
+    geom_point(colour = "black") +
+    geom_hline(yintercept = c(0.05, -0.05), linetype = "dashed") +
+    geom_hline(yintercept = 0)
+}
+```
+[roey.angel@bc.cas.cz](mailto: roey.angel@bc.cas.cz)  
+
+## Methanogenesis inhibition analysis
+Analysis of millipede methane production over time in response to inhibition using BES.
+Species tested: *E. pulchripes*.
+
+### *E. pulchripes* analysis 
+
+**Load data **
+```{r load E. pulchripes data, cache = T}
+read_ods("29_Epibolus_pulchripes_methanogenesis Inhibition.csv",
+         sheet = "29_Epibolus_pulchripes_methanogenesis Inhibition",  col_names = TRUE) %>% # read the ODS file
+  mutate_at(c("Code",
+              "Treatment",
+              "Replicate",
+              "Individual"),
+            ~ (factor(.))) %>% # convert to factor
+  # mutate_at(c("Date"), ~ as.Date(., "%d/%m/%Y")) %>% # convert to date 
+  mutate(Treatment = fct_relevel(Treatment, "Control", "5mM-Na2BES", "10mM-Na2BES")) -> # arrange factor levels 4 plotting
+  Epibolus_methane
+```
+
+#### Plot time series
+
+**Plot time series of all replicates**
+```{r plot all CH4, cache=TRUE}
+# Plot day vs CH4
+ggplot(Epibolus_methane, aes(x = Day, y = `CH4 (nmol mg-1 d-1)`, colour = Treatment, group = Code)) + 
+  geom_point() +
+  geom_line() +
+  scale_colour_manual(values = pom4, name = "") +
+  labs(y = "CH<sub>4</sub> (nmol mg<sup>-1</sup> d<sup>-1</sup>)") +
+  theme(axis.title.y = element_markdown())
+```
+
+**Plot time series of means**
+```{r plot mean+SE CH4, cache=TRUE}
+
+library(conflicted)  
+
+library(tidyverse)
+conflict_prefer("filter", "dplyr")
+conflict_prefer("lag", "dplyr")
+
+# Plot day vs CH4
+Epibolus_methane %>%  # the name of the new data frame and the data frame to be summarised
+  drop_na() %>% # drop rows with missing values
+  group_by(Treatment, Day) %>%   # the grouping variable
+  summarise(`Mean CH4 (nmol mg-1 d-1)` = mean(`CH4 (nmol mg-1 d-1)`),  # calculates the mean of each group
+            StD = sd(`CH4 (nmol mg-1 d-1)`), # calculates the standard deviation of each group
+            n = n(),  # calculates the sample size per group
+            SE = sd(`CH4 (nmol mg-1 d-1)`)/sqrt(n())) -> # calculates the standard error of each group
+  Epibolus_methane_mean
+
+# Create plot
+ggplot(Epibolus_methane_mean, aes(x = Day, y = `Mean CH4 (nmol mg-1 d-1)`)) +
+  geom_point(aes(colour = Treatment), size = 3) +
+  geom_ribbon(aes(
+    ymin = `Mean CH4 (nmol mg-1 d-1)` - SE,
+    ymax = `Mean CH4 (nmol mg-1 d-1)` + SE,
+    fill = Treatment
+  ),
+  alpha = 1 / 4) +
+  geom_line(aes(colour = Treatment)) +
+  labs(y = "CH<sub>4</sub> (nmol mg<sup>-1</sup> d<sup>-1</sup>)") +
+  theme(axis.title.y = element_markdown(), 
+        text = element_text(size = 20),  
+axis.text = element_text(size = 20))+
+  scale_colour_manual(values = pom4, name = "") +
+  scale_fill_manual(values = pom4, name = "") 
+```
+
+```{r table mean+SE CH4, cache=TRUE}
+# For CH4
+Epibolus_methane_mean %>% # output a table of group means
+  kable(., digits = c(0, 1, 1, 1, 0, 1)) %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"), full_width = F)
+```
+
+#### Anova tests
+**Compare day 0 CH4 between groups**
+```{r t0 CH4 aov, cache=T}
+Epibolus_methane %>% 
+  filter(., Day  == 0) %>% # select only day 0 entries 
+  lm(`CH4 (nmol mg-1 d-1)` ~ Treatment, .) -> # fit an anova model
+  aov_t0
+  
+print(Anova(aov_t0)) # print results
+# model performence
+r2(aov_t0) # R2
+check_model(aov_t0)
+model_performance(aov_t0)
+
+aov_t0_df <- fortify(aov_t0) # make a data frame for plotting
+factor.combinations <-
+  as.numeric(factor(aov_t0_df$Treatment),
+             levels = unique(as.character(paste(aov_t0_df$Treatment)))
+  ) # needed for "residuals vs leverage
+mod_data_df <-
+  cbind(aov_t0_df,
+        rows = 1:nrow(aov_t0_df),
+        factors = factor.combinations)
+
+PlotLmResid(mod_data_df) # plot residuals
+```
+
+The ANOVA model indicates no significant different in the weights of the animals at time 0
+
+**Post-hoc tests for day 0**
+```{r t0 CH4 post-hoc, cache=T}
+TukeyHSD(aov(aov_t0)) # Compute Tukey Honest Significant Differences
+```
+
+Also in the post-hoc tests no pair of treatment was found to have a significant difference in weights.
+
+**Compare day 7 methane production between groups**
+To do that I'll first subtract the CH4 at time 7 from time 0 for each individual
+```{r t7 CH4 aov, cache=T}
+
+Epibolus_methane %>% 
+    filter(., Day  == 0 | Day == 7) %>% # select only day 0 and 7 entries 
+  pivot_wider(id_cols = c(Code, Treatment, Replicate, Individual), 
+              names_from = Day, values_from = `CH4 (nmol mg-1 d-1)`) %>% # make a wide format table
+  mutate(`CH4 diff. (nmol mg-1 d-1)` = `7` - `0`) %>% # subtract day 0 from day 7 weight
+  aov(`CH4 diff. (nmol mg-1 d-1)` ~ Treatment, .) -> # fit anova
+  aov_t7
+
+print(Anova(aov_t7)) # print results
+check_model(aov_t7)
+
+
+aov_t7_df <- fortify(aov_t7) # make a data frame for plotting
+factor.combinations <-
+  as.numeric(factor(aov_t7_df$Treatment),
+             levels = unique(as.character(paste(aov_t7_df$Treatment)))
+  ) # needed for "residuals vs leverage
+mod_data_dfa <-
+  cbind(aov_t7_df,
+        rows = 1:nrow(aov_t7_df),
+        factors = factor.combinations)
+
+PlotLmResid(mod_data_dfa) # plot residuals
+
+
+# Comparing day 7 methane production between groups
+# Without subtracting the CH4 at time 7 from time 0 for each individual
+
+Epibolus_methane %>% 
+  filter(., Day  == 7) %>% # select only day 7 entries 
+  lm(`CH4 (nmol mg-1 d-1)` ~ Treatment, .) -> # fit an anova model
+  aov_t7a
+  
+print(Anova(aov_t7a)) # print results
+check_model(aov_t7a)
+model_performance(aov_t7a)
+
+aov_t7a_df <- fortify(aov_t7a) # make a data frame for plotting
+factor.combinations <-
+  as.numeric(factor(aov_t7a_df$Treatment),
+             levels = unique(as.character(paste(aov_t7a_df$Treatment)))
+  ) # needed for "residuals vs leverage
+mod_data_dfb <-
+  cbind(aov_t7a_df,
+        rows = 1:nrow(aov_t7a_df),
+        factors = factor.combinations)
+
+PlotLmResid(mod_data_dfb) # plot residuals
+```
+
+The analysis indicates no significant difference at day 7
+
+**Post-hoc tests for day 7**
+```{r t7 CH4 post-hoc, cache=T}
+TukeyHSD(aov(aov_t7))
+
+# Without subtraction
+
+TukeyHSD(aov(aov_t7a))
+```
+
+**Compare day 14 methane production between groups**
+To do that I'll first subtract the weight at time 14 from time 0 for each individual
+```{r t14 CH4 aov, cache=T}
+Epibolus_methane %>% 
+  
+  filter(., Day  == 0 | Day == 14) %>% # select only day 0 and 14 entries 
+  pivot_wider(id_cols = c(Code, Treatment, Replicate, Individual), 
+              names_from = Day, values_from = `CH4 (nmol mg-1 d-1)`) %>% # make a wide format table
+  mutate(`CH4 diff. (nmol mg-1 d-1)` = `14` - `0`) %>% # subtract day 0 from day 14 weight
+  aov(`CH4 diff. (nmol mg-1 d-1)` ~ Treatment, .) -> # fit anova
+  aov_t14
+
+print(Anova(aov_t14)) # print results
+check_model(aov_t14)
+
+
+aov_t14_df <- fortify(aov_t14) # make a data frame for plotting
+factor.combinations <-
+  as.numeric(factor(aov_t14_df$Treatment),
+             levels = unique(as.character(paste(aov_t14_df$Treatment)))
+  ) # needed for "residuals vs leverage
+mod_data_dfc <-
+  cbind(aov_t14_df,
+        rows = 1:nrow(aov_t14_df),
+        factors = factor.combinations)
+
+PlotLmResid(mod_data_dfc) # plot residuals
+
+
+# Comparing day 14 methane production between groups
+# Without subtracting the CH4 at time 14 from time 0 for each individual
+
+
+
+
+Epibolus_methane %>% 
+  filter(., Day  == 14) %>% # select only day 14 entries 
+  lm(`CH4 (nmol mg-1 d-1)` ~ Treatment, .) -> # fit an anova model
+  aov_t14a
+  
+print(Anova(aov_t14a)) # print results
+check_model(aov_t14a)
+model_performance(aov_t14a)
+
+aov_t14a_df <- fortify(aov_t14a) # make a data frame for plotting
+factor.combinations <-
+  as.numeric(factor(aov_t14a_df$Treatment),
+             levels = unique(as.character(paste(aov_t14a_df$Treatment)))
+  ) # needed for "residuals vs leverage
+mod_data_dfd <-
+  cbind(aov_t14a_df,
+        rows = 1:nrow(aov_t14a_df),
+        factors = factor.combinations)
+
+PlotLmResid(mod_data_dfd) # plot residuals
+```
+
+The analysis indicates a significant difference at day 14
+
+**Post-hoc tests for day 14**
+```{r t14 CH4 post-hoc, cache=T}
+TukeyHSD(aov(aov_t14))
+
+# Without subtracting the CH4 at time 7 from time 0 for each individual
+
+TukeyHSD(aov(aov_t14a))
+```
+At day 14, there is a significant difference between the treatments and the control, but no significant difference between the two treatments.
+
+
+**Compare day 21 methane production between groups**
+To do that I'll first subtract the CH4 at time 21 from time 0 for each individual
+```{r t21 CH4 aov, cache=T}
+
+Epibolus_methane %>% 
+    filter(., Day  == 0 | Day == 21) %>% # select only day 0 and 21 entries 
+  pivot_wider(id_cols = c(Code, Treatment, Replicate, Individual), names_from = Day, values_from = `CH4 (nmol mg-1 d-1)`) %>% # make a wide format table
+  mutate(`CH4 diff. (nmol mg-1 d-1)` = `21` - `0`) %>% # subtract day 0 from day 21 CH4
+  aov(`CH4 diff. (nmol mg-1 d-1)` ~ Treatment, .) -> # fit anova
+  aov_t21
+
+print(Anova(aov_t21)) # print results
+check_model(aov_t21)
+
+
+aov_t21_df <- fortify(aov_t21) # make a data frame for plotting
+factor.combinations <-
+  as.numeric(factor(aov_t21_df$Treatment),
+             levels = unique(as.character(paste(aov_t21_df$Treatment)))
+  ) # needed for "residuals vs leverage
+mod_data_df21 <-
+  cbind(aov_t21_df,
+        rows = 1:nrow(aov_t21_df),
+        factors = factor.combinations)
+
+PlotLmResid(mod_data_df21) # plot residuals
+
+
+# Comparing day 21 methane production between groups
+# Without subtracting the CH4 at time 21 from time 0 for each individual
+
+
+
+
+Epibolus_methane %>% 
+  filter(., Day  == 21) %>% # select only day 21 entries 
+  lm(`CH4 (nmol mg-1 d-1)` ~ Treatment, .) -> # fit an anova model
+  aov_t21a
+  
+print(Anova(aov_t21a)) # print results
+check_model(aov_t21a)
+model_performance(aov_t21a)
+
+aov_t21a_df <- fortify(aov_t21a) # make a data frame for plotting
+factor.combinations <-
+  as.numeric(factor(aov_t21a_df$Treatment),
+             levels = unique(as.character(paste(aov_t21a_df$Treatment)))
+  ) # needed for "residuals vs leverage
+mod_data_df2 <-
+  cbind(aov_t21a_df,
+        rows = 1:nrow(aov_t21a_df),
+        factors = factor.combinations)
+
+PlotLmResid(mod_data_df2) # plot residuals
+```
+
+The analysis indicates a significant difference at day 21
+
+**Post-hoc tests for day 21**
+```{r t21 CH4 post-hoc, cache=T}
+TukeyHSD(aov(aov_t21))
+
+# Without subtracting the CH4 at time 7 from time 0 for each individual
+TukeyHSD(aov(aov_t21a))
+```
+At day 21, there is a significant difference between the treatments and the control, but no signififcant difference between the two treatments.
+
+**Compare day 35 methane production between groups**
+To do that I'll first subtract the CH4 at time 35 from time 0 for each individual
+```{r t35 CH4 aov, cache=T}
+
+Epibolus_methane %>% 
+    filter(., Day  == 0 | Day == 35) %>% # select only day 0 and 35 entries 
+  pivot_wider(id_cols = c(Code, Treatment, Replicate, Individual), names_from = Day, values_from = `CH4 (nmol mg-1 d-1)`) %>% # make a wide format table
+  mutate(`CH4 diff. (nmol mg-1 d-1)` = `35` - `0`) %>% # subtract day 0 from day 35 CH4
+  aov(`CH4 diff. (nmol mg-1 d-1)` ~ Treatment, .) -> # fit anova
+  aov_t35
+
+print(Anova(aov_t35)) # print results
+check_model(aov_t35)
+
+
+aov_t35_df <- fortify(aov_t35) # make a data frame for plotting
+factor.combinations <-
+  as.numeric(factor(aov_t35_df$Treatment),
+             levels = unique(as.character(paste(aov_t35_df$Treatment)))
+  ) # needed for "residuals vs leverage
+mod_data_df35 <-
+  cbind(aov_t35_df,
+        rows = 1:nrow(aov_t35_df),
+        factors = factor.combinations)
+
+PlotLmResid(mod_data_df35) # plot residuals
+
+
+# Comparing day 35 methane production between groups
+# Without subtracting the CH4 at time 35 from time 0 for each individual
+
+
+
+
+Epibolus_methane %>% 
+  filter(., Day  == 35) %>% # select only day 35 entries 
+  lm(`CH4 (nmol mg-1 d-1)` ~ Treatment, .) -> # fit an anova model
+  aov_t35a
+  
+print(Anova(aov_t35a)) # print results
+check_model(aov_t35a)
+model_performance(aov_t35a)
+
+aov_t35a_df <- fortify(aov_t35a) # make a data frame for plotting
+factor.combinations <-
+  as.numeric(factor(aov_t35a_df$Treatment),
+             levels = unique(as.character(paste(aov_t35a_df$Treatment)))
+  ) # needed for "residuals vs leverage
+mod_data_df2 <-
+  cbind(aov_t35a_df,
+        rows = 1:nrow(aov_t35a_df),
+        factors = factor.combinations)
+
+PlotLmResid(mod_data_df2) # plot residuals
+```
+
+The analysis indicates a significant difference at day 35
+
+**Post-hoc tests for day 35**
+```{r t35 CH4 post-hoc, cache=T}
+TukeyHSD(aov(aov_t35))
+
+# Without subtracting the CH4 at time 7 from time 0 for each individual
+TukeyHSD(aov(aov_t35a))
+```
+At day 35, there is a significant difference between the treatments and the control, but no signififcant difference between the two treatments.
+
+**Compare day 49 methane production between groups**
+To do that I'll first subtract the CH4 at time 49 from time 0 for each individual
+```{r t49 CH4 aov, cache=T}
+
+Epibolus_methane %>% 
+    filter(., Day  == 0 | Day == 49) %>% # select only day 0 and 49 entries 
+  pivot_wider(id_cols = c(Code, Treatment, Replicate, Individual), names_from = Day, values_from = `CH4 (nmol mg-1 d-1)`) %>% # make a wide format table
+  mutate(`CH4 diff. (nmol mg-1 d-1)` = `49` - `0`) %>% # subtract day 0 from day 49 CH4
+  aov(`CH4 diff. (nmol mg-1 d-1)` ~ Treatment, .) -> # fit anova
+  aov_t49
+
+print(Anova(aov_t49)) # print results
+check_model(aov_t49)
+
+
+aov_t49_df <- fortify(aov_t49) # make a data frame for plotting
+factor.combinations <-
+  as.numeric(factor(aov_t49_df$Treatment),
+             levels = unique(as.character(paste(aov_t49_df$Treatment)))
+  ) # needed for "residuals vs leverage
+mod_data_df49 <-
+  cbind(aov_t49_df,
+        rows = 1:nrow(aov_t49_df),
+        factors = factor.combinations)
+
+PlotLmResid(mod_data_df49) # plot residuals
+
+
+# Comparing day 49 methane production between groups
+# Without subtracting the CH4 at time 49 from time 0 for each individual
+
+
+
+
+Epibolus_methane %>% 
+  filter(., Day  == 49) %>% # select only day 49 entries 
+  lm(`CH4 (nmol mg-1 d-1)` ~ Treatment, .) -> # fit an anova model
+  aov_t49a
+  
+print(Anova(aov_t49a)) # print results
+check_model(aov_t49a)
+model_performance(aov_t49a)
+
+aov_t49a_df <- fortify(aov_t49a) # make a data frame for plotting
+factor.combinations <-
+  as.numeric(factor(aov_t49a_df$Treatment),
+             levels = unique(as.character(paste(aov_t49a_df$Treatment)))
+  ) # needed for "residuals vs leverage
+mod_data_df2 <-
+  cbind(aov_t49a_df,
+        rows = 1:nrow(aov_t49a_df),
+        factors = factor.combinations)
+
+PlotLmResid(mod_data_df2) # plot residuals
+```
+
+The analysis indicates a significant difference at day 49
+
+**Post-hoc tests for day 49**
+```{r t49 CH4 post-hoc, cache=T}
+TukeyHSD(aov(aov_t49))
+
+# Without subtracting the CH4 at time 7 from time 0 for each individual
+TukeyHSD(aov(aov_t49a))
+```
+At day 49, there is no significant difference between the treatments and the control.
+
+**Compare day 63 methane production between groups**
+To do that I'll first subtract the CH4 at time 63 from time 0 for each individual
+```{r t63 CH4 aov, cache=T}
+
+Epibolus_methane %>% 
+    filter(., Day  == 0 | Day == 63) %>% # select only day 0 and 63 entries 
+  pivot_wider(id_cols = c(Code, Treatment, Replicate, Individual), names_from = Day, values_from = `CH4 (nmol mg-1 d-1)`) %>% # make a wide format table
+  mutate(`CH4 diff. (nmol mg-1 d-1)` = `63` - `0`) %>% # subtract day 0 from day 63 CH4
+  aov(`CH4 diff. (nmol mg-1 d-1)` ~ Treatment, .) -> # fit anova
+  aov_t63
+
+print(Anova(aov_t63)) # print results
+check_model(aov_t63)
+
+
+aov_t63_df <- fortify(aov_t63) # make a data frame for plotting
+factor.combinations <-
+  as.numeric(factor(aov_t63_df$Treatment),
+             levels = unique(as.character(paste(aov_t63_df$Treatment)))
+  ) # needed for "residuals vs leverage
+mod_data_df63 <-
+  cbind(aov_t63_df,
+        rows = 1:nrow(aov_t63_df),
+        factors = factor.combinations)
+
+PlotLmResid(mod_data_df63) # plot residuals
+
+
+# Comparing day 63 methane production between groups
+# Without subtracting the CH4 at time 63 from time 0 for each individual
+
+
+
+
+Epibolus_methane %>% 
+  filter(., Day  == 63) %>% # select only day 63 entries 
+  lm(`CH4 (nmol mg-1 d-1)` ~ Treatment, .) -> # fit an anova model
+  aov_t63a
+  
+print(Anova(aov_t63a)) # print results
+check_model(aov_t63a)
+model_performance(aov_t63a)
+
+aov_t63a_df <- fortify(aov_t63a) # make a data frame for plotting
+factor.combinations <-
+  as.numeric(factor(aov_t63a_df$Treatment),
+             levels = unique(as.character(paste(aov_t63a_df$Treatment)))
+  ) # needed for "residuals vs leverage
+mod_data_df2 <-
+  cbind(aov_t63a_df,
+        rows = 1:nrow(aov_t63a_df),
+        factors = factor.combinations)
+
+PlotLmResid(mod_data_df2) # plot residuals
+```
+
+The analysis indicates a significant difference at day 63
+
+**Post-hoc tests for day 63**
+```{r t63 CH4 post-hoc, cache=T}
+TukeyHSD(aov(aov_t63))
+
+# Without subtracting the CH4 at time 7 from time 0 for each individual
+TukeyHSD(aov(aov_t63a))
+```
+At day 63, there is no significant difference between the treatments and the control.

@@ -1,0 +1,1072 @@
+---
+title: "Amplicon Sequence Analyses for Glomeris Antibiotic Experiment (using Silva tax)"
+author: "Julius Nweze"
+date: "`r Sys.Date()`"
+output:
+  rmarkdown::html_document:
+    toc: true
+    toc_float: true
+    toc_depth: 5
+    keep_md: true
+    number_sections: false
+    highlight: "pygments"
+    theme: "flatly"
+    dev: "png"
+    df_print: "kable"
+    fig_caption: true
+    code_folding: "show"
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r libraries, include=F}
+# Load libraries
+#.libPaths(c('~/R/library', .libPaths())) # Uncomment if you have no write access to R path
+
+repo <- "http://cran.wu.ac.at"
+lib.loc <- Sys.getenv("R_LIBS_USER")
+
+update.packages(
+    lib.loc, 
+    repos = repo,
+    ask = FALSE
+)
+
+.cran_libs <- c(
+  "phyloseq", # a set of classes and tools to facilitate the import, storage, analysis, and graphical display of microbiome census data
+  "rmarkdown", # Dynamic Documents for R
+  "knitr",  # A General-Purpose Package for Dynamic Report Generation in R
+  "extrafont", # for extra figure fonts
+  "phyloseq.extended", # Various customs functions written to enhance the base functions of phyloseq
+  "dplyr",  # filter and reformat data frames
+  "gridExtra", # To arrange multiple grid-based plots on a page, and draw tables.
+  "knitr", # A General-Purpose Package for Dynamic Report Generation in R
+  "kableExtra", # Construct Complex Table with 'kable' and Pipe Syntax
+  "rmarkdown", # Dynamic Documents for R
+  "extrafont", # for extra figure fonts
+  "tidyverse", # for dplyr forcats ggplot2 readr tibble
+  "grid", # The Grid Graphics Package
+  "magrittr", # pipes
+  "scales", # Generic plot scaling methods
+  "svglite", # for svg files
+  "vegan",  # Ordination methods, diversity analysis and other functions for community and vegetation ecologists
+  "car", # Companion to Applied Regression
+  "rcompanion", #Functions to Support Extension Education Program Evaluation
+  "multcomp", # Simultaneous Inference in General Parametric Models 
+  "nlme", # Fit Linear Model Using Generalized Least Squares
+  "ggResidpanel", # Panels and Interactive Versions of Diagnostic Plots using 
+  "lsmeans", # Least-Squares Means
+  "ggplot2",      # graphics
+  "tidyr", # necessary to import the data from Excel file
+  "phyloseqGraphTest", # Provides functions for graph-based multiple-sample testing and visualization of microbiome data
+  "shiny", # makes it easy to build interactive web apps straight from R
+  "miniUI", # Designed to work especially well for creating Shiny Gadgets
+  "caret", # Classification And REgression Training is a set of functions that attempt to streamline the process for creating predictive models
+  "pls", # Partial Least Squares and Principal Component Regression
+  "e1071", # Functions for latent class analysis, short time Fourier transform, fuzzy clustering, support vector machines
+  "randomForest",
+  "ggrepel",
+  "dunn.test",
+  "reshape2",
+  "devtools", 
+  "PMA", 
+  "structSSI",  
+  "ade4",
+  "igraph", 
+  "ggnetwork", 
+  "intergraph", 
+  "scales",
+  "microbiome",
+  "ggpubr",
+  "RColorBrewer",
+  "microbiomeutilities",
+  "viridis",
+  "tibble",
+  "cowplot",
+  "userfriendlyscience",
+ "agricolae", # Statistical Procedures for Agricultural Research
+ # "doParallel", # parallel backend for the foreach/%dopar% function
+ "BiodiversityR", # Package for Community Ecology and Suitability Analysis
+ # "hexbin", # Hexagonal Binning Routines
+ # "ggtern", # An Extension to 'ggplot2', for the Creation of Ternary Diagrams
+#  "MuMIn" # Multi-Model Inference
+  #"stringr",
+ # "mctoolsr"
+"AnnotationDbi", 
+"DESeq2", 
+"GO.db", 
+"impute", 
+"preprocessCore",
+"adespatial"
+) 
+
+.inst <- .cran_libs %in% installed.packages()
+if (any(!.inst)) {
+   install.packages(.cran_libs[!.inst],
+                    repos = repo,
+                    lib = lib.loc)
+}
+
+.bioc_libs <- c(
+  #"multtest", #Resampling-based multiple hypothesis testing
+)
+
+.bioc_inst <- .bioc_libs %in% installed.packages()
+if (any(!.bioc_inst)) {
+   if (!requireNamespace("BiocManager", quietly = TRUE))
+   install.packages("BiocManager")
+   BiocManager::install(ask = F, lib = lib.loc)  # upgrade bioC packages
+   BiocManager::install(.bioc_libs[!.bioc_inst], ask = F, lib = lib.loc)
+}
+
+.local_libs <- c()
+
+.inst <- names(.local_libs) %in% installed.packages()
+if (any(!.inst)) {
+   install.packages(paste0("~/R/", .local_libs[!.inst]) ,repos = NULL, type = "source", lib = lib.loc)
+}
+
+.github_libs <- c()
+
+.github_lib_names <- stringr::str_replace(.github_libs, ".*/(.*)$", "\\1")
+
+.github_inst <- .github_lib_names %in% installed.packages()
+if (any(!.github_inst)) {
+  devtools::install_github(.github_libs[!.github_inst],
+                           lib = lib.loc,
+                           dependencies = TRUE)
+}
+
+
+# Load packages into session, and print package version
+(loaded.libs <- sapply(c(.cran_libs, .bioc_libs, names(.local_libs), .github_lib_names), require, character.only = TRUE))
+if (!all(loaded.libs)) {stop(paste("Package(s):", names(loaded.libs[loaded.libs == FALSE]), "could not be loaded"))}
+sapply(c(.cran_libs, .bioc_libs, names(.local_libs), .github_lib_names), packageVersion)
+set.seed(123456789)
+bootstraps <- 1000
+min_lib_size <- 1000
+```
+
+```{r functions, include=F}
+PlotLibDist <- function(physeq) {
+  ggplot(sample_data(physeq),
+         aes(x = Replicate, y = Lib.size, fill = Source)) +
+    geom_bar(stat = "identity",
+             position = "dodge",
+             color = "black") +
+    scale_y_log10(
+      breaks = trans_breaks("log10", function(x)
+        10 ^ x),
+      labels = trans_format("log10", math_format(10 ^ .x))
+    ) +
+    background_grid(major = "xy", minor = "none") +
+    # scale_fill_locuszoom() +
+    facet_grid(Climate ~ .)
+}
+
+PlotReadHist <- function(OTUmat, b.width = 10) {
+  OTUmat %>%
+    t() %>%
+    as.tibble() %>%
+    gather(key = sample, value = abundance) %>%
+    ggplot(aes(abundance)) +
+    # geom_histogram(binwidth = 1000) +
+    geom_freqpoly(binwidth = b.width) +
+    scale_y_log10()
+}
+
+GMPR <- function(comm,
+                  intersect.no = 4,
+                  ct.min = 4) {
+  require(matrixStats)
+  # Taken from: https://github.com/jchen1981/GMPR
+  # 
+  # Computes the GMPR size factor
+  #
+  # Args:
+  #   comm: a matrix of counts, row - features (OTUs, genes, etc) , column - sample
+  #   intersect.no: the minimum number of shared features between sample pair, where the ratio is calculated
+  #   ct.min: the minimum number of counts required to calculate ratios （Empirical study found ct.min=4 is suitable)
+  
+  #
+  # Returns:
+  #   a list that contains:
+  #      gmpr： the GMPR size factors for all samples; Samples with distinct sets of features will be output as NA.
+  #      nss:   number of samples with significant sharing (> intersect.no) including itself
+  
+  # mask counts < ct.min
+  comm[comm < ct.min] <- 0
+  
+  if (is.null(colnames(comm))) {
+    colnames(comm) <- paste0('S', 1:ncol(comm))
+  }
+  
+  cat('Begin GMPR size factor calculation ...\n')
+  
+  comm.no <- numeric(ncol(comm))
+  gmpr <- sapply(1:ncol(comm),  function(i) {
+    if (i %% 50 == 0) {
+      cat(i, '\n')
+    }
+    x <- comm[, i]
+    # Compute the pairwise ratio
+    pr <- x / comm
+    # Handling of the NA, NaN, Inf
+    pr[is.nan(pr) | !is.finite(pr) | pr == 0] <- NA
+    # Counting the number of non-NA, NaN, Inf
+    incl.no <- colSums(!is.na(pr))
+    # Calculate the median of PR
+    pr.median <- colMedians(pr, na.rm = TRUE)
+    # Record the number of samples used for calculating the GMPR
+    comm.no[i] <<- sum(incl.no >= intersect.no)
+    # Geometric mean of PR median
+    if (comm.no[i] > 1) {
+      return(exp(mean(log(pr.median[incl.no >= intersect.no]))))
+    } else {
+      return(NA)
+    }
+  })
+  
+  if (sum(is.na(gmpr))) {
+    warning(
+      paste0(
+        'The following samples\n ',
+        paste(colnames(comm)[is.na(gmpr)], collapse = '\n'),
+        '\ndo not share at least ',
+        intersect.no,
+        ' common taxa with the rest samples! ',
+        'For these samples, their size factors are set to be NA! \n',
+        'You may consider removing these samples since they are potentially outliers or negative controls!\n',
+        'You may also consider decreasing the minimum number of intersecting taxa and rerun the procedure!\n'
+      )
+    )
+  }
+  
+  cat('Completed!\n')
+  cat(
+    'Please watch for the samples with limited sharing with other samples based on NSS! They may be outliers! \n'
+  )
+  names(gmpr) <- names(comm.no) <- colnames(comm)
+  return(list(gmpr = gmpr, nss = comm.no))
+}
+
+PlotLmResid <- function(lm.df, which = c(1:6), mfrow = c(3, 2)){
+  require(grid)
+
+  if (length(levels(as.factor(lm.df$.fitted))) < 10) {# if number of unique x values is <10 just draw a line through the means
+    smoother <- stat_summary(fun.y = mean, colour = "red", geom = "line")
+  } else smoother <- stat_smooth(method = "loess", geom = "smooth", se = FALSE, colour = "firebrick", size = 1)
+  
+  # residuals vs fitted
+  g1 <- ggplot(lm.df, aes(.fitted, .resid)) +
+    geom_point()  +
+    smoother + 
+    geom_hline(yintercept = 0, linetype = 2, size = .2) +
+    scale_x_continuous("Fitted Values") +
+    scale_y_continuous("Residual") +
+    labs(title = "Residuals vs Fitted")
+  
+  # normal qq
+  a <- quantile(lm.df$.stdresid, c(0.25, 0.75), na.rm = TRUE)
+  b <- qnorm(c(0.25, 0.75))
+  slope <- diff(a)/diff(b)
+  int <- a[1] - slope * b[1]
+  g2 <- ggplot(lm.df, aes(sample = .stdresid)) +
+    stat_qq() +
+    geom_abline(slope = slope, intercept = int, colour = "firebrick", size = 1) +
+      scale_x_continuous("Theoretical Quantiles") +
+      scale_y_continuous("Standardized Quantiles") +
+      labs(title = "Normal Q-Q")
+ 
+  # scale-location
+  g3 <- ggplot(lm.df, aes(.fitted, sqrt(abs(.stdresid)))) +
+    geom_point() +
+    smoother +
+    scale_x_continuous("Fitted Values") +
+    scale_y_continuous("Root of Standardized Residuals") +
+    labs(title = "Scale-Location")
+ 
+  # residuals vs leverage
+  g4 <- ggplot(lm.df, aes(factors, .stdresid)) +
+    geom_point() +
+    smoother +
+    geom_hline(yintercept = 0, linetype = 2, size = .2) +
+    scale_x_continuous("Factor Level Combinations") +
+    scale_y_continuous("Standardized Residuals") +
+    labs(title = "Residuals vs Factor Levels")
+ 
+#   # cook's distance
+#   g5 <-  ggplot(lm.df, aes(rows, .cooksd, ymin=0, ymax=.cooksd)) +
+#     geom_point() + geom_linerange() +
+#     scale_x_continuous("Observation Number") +
+#     scale_y_continuous("Cook's distance") +
+#     labs(title="Cook's Distance")  
+  
+  # cooksd vs leverage
+  g5 <- ggplot(lm.df, aes(factors, .cooksd)) +
+    geom_point() +
+    smoother +
+    scale_x_continuous("Factor Level Combinations") +
+    scale_y_continuous("Cook's distance") +
+    labs(title = "Cook's dist vs Leverage")
+  
+  # g6 <- PlotACF(lm.df)
+  bw <- diff(range(lm.df$.resid)) / (2 * IQR(lm.df$.resid) / length(lm.df$.resid) ^ (1/3))
+  sshist <- function(x){ # optimise bins
+  # 2006 Author Hideaki Shimazaki
+  # Department of Physics, Kyoto University
+  # shimazaki at ton.scphys.kyoto-u.ac.jp
+	N <- 2 : 100
+	C <- numeric(length(N))
+	D <- C
+
+	for (i in 1:length(N)) {
+		D[i] <- diff(range(x)) / N[i]
+
+		edges = seq(min(x), max(x), length=N[i])
+		hp <- hist(x, breaks = edges, plot=FALSE)
+		ki <- hp$counts
+
+		k <- mean(ki)
+		v <- sum((ki-k) ^ 2) / N[i]
+
+		C[i] <- (2 * k-v) / D[i] ^ 2	#Cost Function
+	}
+
+	idx <- which.min(C)
+	optD <- D[idx]
+
+	bins <- seq(min(x), max(x), length=N[idx])
+	# h = hist(x, breaks = bins)
+	# rug(x)
+
+	return(bins)
+  }
+  
+  bins <- sshist(lm.df$.resid)
+  g6 <- ggplot(lm.df, aes(.resid)) + 
+    geom_histogram(breaks = bins)
+ 
+  plots <- list(g1, g2, g3, g4, g5, g6)
+ 
+  # making the plots
+  grid.newpage()
+ 
+  if (prod(mfrow) > 1) {
+    mypos <- expand.grid(1:mfrow[1], 1:mfrow[2])
+    mypos <- mypos[with(mypos, order(Var1)), ]
+    pushViewport(viewport(layout = grid.layout(mfrow[1], mfrow[2])))
+    formatter <- function(.){}
+  } else {
+    mypos <- data.frame(matrix(1, length(which), 2))
+    pushViewport(viewport(layout = grid.layout(1, 1)))
+    formatter <- function(.) {
+      .dontcare <- readline("Hit <Return> to see next plot: ")
+      grid.newpage()
+    }
+  }
+ 
+  j <- 1
+  for (i in which) {
+    formatter()
+    print(plots[[i]], vp = viewport(layout.pos.row = mypos[j, ][1], layout.pos.col = mypos[j, ][2]))
+    j <- j + 1
+  }
+}
+
+PlotACF <- function(lm.df){
+  ## generate ACF plot for lm and lme
+  # compute acf without plotting
+  acz <- acf(lm.df$.resid, plot = F)
+  # convert to data frame
+  acd <- data.frame(lag = acz$lag, acf = acz$acf)
+  # use data frame for ggplot
+  ggplot(acd, aes(lag, acf)) + 
+    geom_bar(colour = "black", fill = "black", stat = "identity", position = "dodge", width = 0.01) +
+    geom_point(colour = "black") +
+    geom_hline(yintercept = c(0.05, -0.05), linetype = "dashed") +
+    geom_hline(yintercept = 0)
+}
+
+TestAlpha <-
+  function(data2test = Richness_Diversity_long,
+           response_name = "Estimate",
+           factor_names = c("Treatment", "Sample"),
+           boxcox.trans = FALSE) {
+    print(leveneTest(as.formula(paste(response_name, paste(factor_names[1], factor_names[2], sep = " * "), sep = " ~ ")), data2test)) # test for homogeneity
+    mod_data <-
+        aov(as.formula(
+          paste(response_name, paste(factor_names[1], factor_names[2], sep = " * "), sep = " ~ ")
+        ), data2test)
+    
+    if (boxcox.trans) { # employ boxcox transformation then recalculate model
+      print("Performing Box-Cox transformation of the data")
+      lambdas <- boxcox(as.formula(
+          paste(response_name, paste(factor_names[1], factor_names[2], sep = " * "), sep = " ~ ")
+        ), data=data2test, lambda = seq(0, 1.0, 0.01))
+      print(range(lambdas$x[lambdas$y > max(lambdas$y) - qchisq(0.95,1)/2]))
+      print(l.max <- lambdas$x[which.max(lambdas$y)])
+      if (l.max == 0) l.max <- 1
+      data2test$Estimate.box <- (data2test$Estimate ^ l.max - 1)/l.max
+      mod_data <-
+        aov(as.formula(
+          paste("Estimate.box", paste(factor_names[1], factor_names[2], sep = " * "), sep = " ~ ")
+        ), data2test)
+    }
+    
+    print(mod_data)
+    mod_data_df <- fortify(mod_data)
+    factor.combinations <-
+      as.numeric(factor(
+        paste(mod_data_df[, factor_names[1]], mod_data_df[, factor_names[2]]),
+        levels = unique(as.character(paste(
+          mod_data_df[, factor_names[1]], mod_data_df[, factor_names[2]]
+        )))
+      )) # needed for "residuals vs leverage
+    mod_data_df <-
+      cbind(mod_data_df,
+            rows = 1:nrow(mod_data_df),
+            factors = factor.combinations)
+    PlotLmResid(mod_data_df)
+    print(summary(mod_data)) # display Type I ANOVA table
+    # drop1(mod_amp.2,~.,test="F") # type III SS and F Tests
+    print(model.tables(mod_data,"means"), digits = 3) # Show the means
+    return(mod_data)
+  }
+
+PairwiseAdonis <- function(x, factors, sim.function = "vegdist", sim.method = "bray", 
+    p.adjust.m = "BH", reduce = NULL) 
+{
+  # Taken from: https://github.com/pmartinezarbizu/pairwiseAdonis
+    co <- combn(unique(as.character(factors)), 2)
+    pairs <- c()
+    total.DF <- c()
+    F.Model <- c()
+    R2 <- c()
+    p.value <- c()
+    for (elem in 1:ncol(co)) {
+        if (sim.function == "daisy") {
+            x1 = daisy(x[factors %in% c(co[1, elem], co[2, elem]), 
+                ], metric = sim.method)
+        }
+        else {
+            x1 = vegdist(x[factors %in% c(co[1, elem], co[2, 
+                elem]), ], method = sim.method)
+        }
+        ad <- adonis(x1 ~ factors[factors %in% c(co[1, elem], 
+            co[2, elem])], permutations = 9999)
+        pairs <- c(pairs, paste(co[1, elem], "vs", co[2, elem]))
+        total.DF <- c(total.DF, ad$aov.tab["Total", 1])
+        F.Model <- c(F.Model, ad$aov.tab[1, 4])
+        R2 <- c(R2, ad$aov.tab[1, 5])
+        p.value <- c(p.value, ad$aov.tab[1, 6])
+    }
+    p.adjusted <- p.adjust(p.value, method = p.adjust.m)
+    sig = c(rep("", length(p.adjusted)))
+    sig[p.adjusted <= 0.05] <- "."
+    sig[p.adjusted <= 0.01] <- "*"
+    sig[p.adjusted <= 0.001] <- "**"
+    sig[p.adjusted <= 1e-04] <- "***"
+    pairw.res <- data.frame(pairs, total.DF, F.Model, R2, p.value, 
+        p.adjusted, sig)
+    if (!is.null(reduce)) {
+        pairw.res <- subset(pairw.res, grepl(reduce, pairs))
+        pairw.res$p.adjusted <- p.adjust(pairw.res$p.value, method = p.adjust.m)
+        sig = c(rep("", length(pairw.res$p.adjusted)))
+        sig[pairw.res$p.adjusted <= 0.05] <- "."
+        sig[pairw.res$p.adjusted <= 0.01] <- "*"
+        sig[pairw.res$p.adjusted <= 0.001] <- "**"
+        sig[pairw.res$p.adjusted <= 1e-04] <- "***"
+        pairw.res <- data.frame(pairw.res[, 1:5], sig)
+    }
+    class(pairw.res) <- c("pwadonis", "data.frame")
+    return(pairw.res)
+}
+
+STAMPR <- function(physeq_obj, rank = "Phylum", sig_pairs, threshold = 0.005) {
+  # run a STAMP-like analysis: compare relative abundance differences using two-way analysis, then run a post-hoc test and correct for multiple comparisons
+  
+  physeq_glom <- tax_glom(physeq_obj,
+                          rank,
+                          NArm = TRUE)
+  physeq_glom_rel <-
+    transform_sample_counts(physeq_glom, function(x)
+      x / sum(x))
+  
+  # group dataframe by rank, calculate median rel. abundance and keep taxa above threshold
+  physeq_glom_rel %>% 
+    psmelt %>% 
+    group_by_(rank) %>%
+    summarise(median = median(Abundance)) %>% 
+    filter(median >= threshold) %>% 
+    pull(1) %>% 
+    as.character() ->
+    Taxa2test
+  
+  physeq_glom_rel_abund <- prune_taxa(tax_table(physeq_glom_rel)[, rank] %in% Taxa2test, physeq_glom_rel)
+  
+  taxa_test_results <-
+    bind_cols(Phylum = tax_table(physeq_glom_rel_abund)[, rank],
+              as.data.frame(matrix(
+                NA,
+                nrow = ntaxa(physeq_glom_rel_abund),
+                ncol = length(sig_pairs) + 6 # sig_pairs is taken from pairwise adonis
+              )))
+  colnames(taxa_test_results) <-
+    c(
+      rank,
+      "Control",
+      "Sterile feed",
+      "Antibiotics (2X)",
+      "Antibiotics (1X)",
+      sig_pairs
+    )
+  
+  taxa_test_stats <-
+    bind_cols(Phylum = tax_table(physeq_glom_rel_abund)[, rank],
+              as.data.frame(matrix(
+                NA,
+                nrow = ntaxa(physeq_glom_rel_abund),
+                ncol = (length(sig_pairs) * 5) # sig_pairs is taken from pairwise adonis
+              )))
+  colnames(taxa_test_stats) <-
+    c(rank, c(rbind(
+      t(str_split_fixed(sig_pairs, " vs ", n = 2)), matrix(rep(
+        c("Estimate diff.", "low CI", "high CI"), length(sig_pairs)
+      ), ncol = length(sig_pairs))
+    ))) # this is ugly but it works well, basically c() flattens a matrix
+  
+  for (phy_id in seq(ntaxa(physeq_glom_rel_abund))) {
+    data2test <-
+      bind_cols(Abundance = otu_table(physeq_glom_rel_abund)[, phy_id] * 100,
+                as(sample_data(physeq_glom_rel_abund), "data.frame"))
+    # kruskal.test(Abundance ~ Climate.Source, data = data2test)
+    print(tax_table(physeq_glom_rel_abund)[phy_id, rank])
+    print(SRH_mod <-
+            scheirerRayHare(Abundance ~ Climate + Source, data = data2test))
+    taxa_test_results[phy_id, c(2, 4, 6)] <-
+      SRH_mod$p.value[1:3] # p values
+    taxa_test_results[phy_id, c(3, 5, 7)] <-
+      SRH_mod$`Sum Sq`[1:3] / sum(SRH_mod$`Sum Sq`) # Eta (effect size)
+    for (pair in seq(length(sig_pairs))) {
+      pair2test <- unlist(str_split(sig_pairs[pair], " vs "))
+      possibleError <- tryCatch(
+        wilcox_mod <-
+          wilcox.test(
+            Abundance ~ Climate.Source,
+            data = data2test,
+            subset = Climate.Source %in% pair2test,
+            conf.int = TRUE,
+            exact = FALSE
+          ),
+        error = function(e) e
+      ) # AKA Mann Whitney
+      if (inherits(possibleError, 'error')) {
+        print(possibleError)
+        taxa_test_results[phy_id, pair + 7] <- NA
+      } else {
+        print(wilcox_mod)
+        taxa_test_results[phy_id, pair + 7] <- wilcox_mod$p.value
+        taxa_test_stats[phy_id, (pair - 1) * 5 + 2] <-
+          mean(data2test[data2test$Climate.Source %in% pair2test[1],]$Abundance)
+        taxa_test_stats[phy_id, (pair - 1) * 5 + 3] <-
+          mean(data2test[data2test$Climate.Source %in% pair2test[2],]$Abundance)
+        taxa_test_stats[phy_id, (pair - 1) * 5 + 4] <-
+          wilcox_mod$estimate
+        taxa_test_stats[phy_id, (pair - 1) * 5 + c(5, 6)] <-
+          wilcox_mod$conf.int[c(1, 2)]
+      }
+    }
+  }
+  
+  # Correct for FDR for each comparison pair
+  for (pair in seq(2, ncol(taxa_test_results))) {
+    # print(pair)
+    taxa_test_results[, pair] <-
+      p.adjust(pull(taxa_test_results[, pair]) , method = "BH") # Benjamini, Y., and Yekutieli, D. (2001). The control of the false discovery rate in multiple testing under dependency. Annals of Statistics 29, 1165–1188.
+    # qvalue(p = pull(taxa_test_results[, pair]))
+  }
+  
+  write.csv(taxa_test_results, file = paste0("Results/", deparse(substitute(physeq_obj)), "_", rank, "_Pvals.csv"))
+  write.csv(taxa_test_stats, file = paste0("Results/", deparse(substitute(physeq_obj)), "_", rank, "_CI.csv"))
+  Taxa_tests <- list(taxa_test_results, taxa_test_stats)
+  return(Taxa_tests)
+}
+
+CalcALDEx <- function(physeq_obj = mili_Rocks, sig_level = 0.05, LFC = 0.322) {
+  physeq_obj <- filter_taxa(physeq_obj, function(x) sum(x) > 0, TRUE)
+  # physeq_obj <- prune_taxa(sig_taxa, physeq_obj) # remove taxa not significant under the full model
+  data2test <- t(otu_table(physeq_obj))
+  comparison <- as.character(unlist(sample_data(physeq_obj)[, "Climate.Source"]))
+  ALDEx <- aldex.clr(
+    data2test,
+    comparison,
+    mc.samples = 128,
+    denom = "iqlr", # iqlr for slight assymetry in composition
+    verbose = TRUE,
+    useMC = TRUE
+  ) 
+  ALDEx_tt <- aldex.ttest(ALDEx, comparison, paired.test = FALSE) # for two conditions
+  ALDEx_effect <- aldex.effect(
+    ALDEx,
+    comparison,
+    include.sample.summary = TRUE,
+    verbose = TRUE,
+    useMC = TRUE
+  ) # estimate effect sizes
+  ALDEx2plot <- PrepAlDExData(ALDEx_tt, ALDEx_effect, physeq_obj, sig_level, LFC, Taxa_rank)
+  return(ALDEx2plot)
+}
+
+PrepAlDExData <- function(ALDEx_tt, ALDEx_effect, physeq_obj = milli_Rocks, sig_level, LFC, Taxa_rank) {
+  ALDEx2plot <- data.frame(ALDEx_tt, ALDEx_effect) # merge results
+  # group dataframe by OTU, calculate median rel. abundance
+  physeq_obj %>%
+    transform_sample_counts(., function(x) x / sum(x) * 100) %>% 
+    psmelt() %>%
+    group_by(OTU) %>%
+    # filter(OTU %in% sig_taxa) %>%
+    summarise(baseMean = mean(Abundance)) ->
+    baseMean
+  
+  ALDEx2plot$OTU <- rownames(ALDEx2plot)
+  ALDEx2plot %<>% left_join(., baseMean, by = "OTU") # add mean abundance to results table
+  ALDEx2plot$Phylum <-
+    tax_table(physeq_obj)[taxa_names(physeq_obj) %in% ALDEx2plot$OTU, "Phylum"] # add phylum data
+  # change their name to "Rare"
+  ALDEx2plot[ALDEx2plot$Phylum %in% Rare_phyla,]$Phylum <- 'Rare' # Rare_phyla is calcuted for the taxa box plots
+  ALDEx2plot$Significance <- factor("Fail", levels = c("Fail", "Pass")) # define significance factor
+  ALDEx2plot$Significance[ALDEx2plot$wi.eBH < sig_level &
+                            !is.na(ALDEx2plot$wi.eBH) &
+                            abs(ALDEx2plot$effect) > LFC] <- "Pass"
+  # ALDEx2plot$Significance <- as.factor(sapply(ALDEx2plot$wi.eBH, function(x) if (is.na(x) | x > 0.05) {x <- "Fail"} else {x <- "Pass"}))
+  # Rank by taxa abundance
+  ALDEx2plot$Phylum %<>%
+    factor(., levels = Taxa_rank$Phylum) %>%  # Taxa_rank is calcuted for the taxa box plots
+    fct_relevel(., "Rare", after = Inf)
+  return(ALDEx2plot)
+}
+
+GGPlotALDExTax <- function(ALDEx2plot, OTU_labels = FALSE, Taxa = "Phylum", Y_val = "effect", sig_level = 0.05) {
+  p <-
+    ggplot(ALDEx2plot) +
+    geom_jitter(aes_string(
+             x = Taxa,
+             y = Y_val,
+             colour = "Significance",
+             size = "baseMean"),
+             alpha = 2 / 3, 
+             width = 0.3,
+             stroke = 0) +
+    xlab("") +
+    ylab(expression(paste("Effect size (lo", g[2], " fold change)"))) +
+    # ylab("Fold change") +
+    labs(colour = paste("Significance at \n p <", sig_level), size = "Mean count (%)") +
+    theme_grey(base_size = 18,  base_family = f_name) +
+    theme(axis.text.x = element_text(angle = 45.0, vjust = 1, hjust = 1)) +
+    guides(colour = guide_legend(override.aes = list(size = 5))) +
+    scale_colour_manual(values = pom2) +
+    scale_size_continuous(range = c(1, 5), breaks = c(1, 2.5, 5, 10))
+  
+  if (OTU_labels) {
+    p <- p + geom_text_repel(
+      aes_string(x = Taxa, y = Y_val),
+      size = 8,
+      label = sub("OTU_([0-9]+)", "\\1", rownames(ALDEx2plot[ALDEx2plot$Significance == "Pass", ])),
+      data = ALDEx2plot[ALDEx2plot$Significance == "Pass", ],
+      nudge_x = 0.4,
+      colour = "#707070"
+    )
+  }
+  return(p)
+}
+
+gz <- function(in_path, out_path = tempfile()) {
+  # Compress a file using gz and delete the uncompressed file
+  out <- gzfile(out_path, "w")
+  writeLines(readLines(in_path), out)
+  close(out)
+
+  file.remove(in_path)
+  invisible(out_path)
+}
+
+```
+
+
+```{r style settings, include=F}
+graphic_device <- "svglite"
+options(width = 90, knitr.table.format = "html") 
+opts_chunk$set(
+  warning = FALSE,
+  message = FALSE,
+  cache = TRUE,
+  dev = graphic_device,
+  fig.ext = "svg",
+  #  fig.width=12,
+  #  fig.height=8,
+  cache.path = "Antibiotics_Sequence_cache/",
+  fig.path = "Antibiotics_Sequence_figures/"
+)
+
+f_name <- "DejaVu Sans" #sub("\\s//", "", f_name)
+f_size <- 12
+font_import(pattern = "DejaVuSans", prompt = FALSE)
+loadfonts() # registers fonts
+theme_set(theme_bw(base_size = f_size, base_family = f_name))
+pom4 <- ggpomological:::pomological_palette[c(2, 1, 9, 3)]
+pom2 <- c(ggpomological:::pomological_base[[7]], ggpomological:::pomological_palette[[1]])
+```
+
+
+
+
+## **Read the data and create Glomeris (faecal and faecal) phyloseq objects**
+```{r load amplicon seq data, cache = T}
+# load your data 
+tsv_table <- read.table("16_DADA2.seqtab_nochim_decontam.tsv", sep=",", header=T,quote="", comment.char="", stringsAsFactors=F, check.names=FALSE)
+tax_table <- read.table("16_DADA2.taxa_silva_decontam.tsv", sep=",", header=T,quote="", comment.char="", stringsAsFactors=F, check.names=FALSE)
+sample_table <- read.csv("16_Metadata.csv",  sep=",", header=T, check.names=FALSE)
+```
+
+
+##*Phyloseq objects need to have row.names*
+```{r adding row.names to data, cache = T}
+
+# Define the row names from the ASV column
+row.names(tsv_table) <- tsv_table$ASV
+ tsv_table <- tsv_table %>% dplyr::select(-c(ASV, MC1_S96, BC1_S103, NC1_S110, MC2_S123, BC2_S130, NC2_S137)) 
+
+
+row.names(tax_table) <- tax_table$ASV
+tax_table <- tax_table %>% dplyr::select(-ASV)
+  
+row.names(sample_table) <- sample_table$Sample
+sample_table <- sample_table[!(sample_table$Sample=="MC1_S96" | sample_table$Sample=="BC1_S103" | sample_table$Sample=="NC1_S110" | sample_table$Sample=="MC2_S123" | sample_table$Sample=="BC2_S130" | sample_table$Sample=="NC2_S137"),]
+sample_table <- sample_table %>% dplyr::select(-Sample)
+```
+
+
+*Transform into matrixes tsv and tax tables (sample table can be left as data frame)*
+```{r transformation of data to matrices, cache = T} 
+
+tsv_table <- as.matrix(tsv_table)
+tax_table <- as.matrix(tax_table)
+```
+
+
+*Transform to phyloseq objects*
+```{r pyloseq object, cache = T}
+
+
+OTU <- otu_table(tsv_table, taxa_are_rows = TRUE)
+TAX = phyloseq::tax_table(tax_table)
+sample = sample_data(sample_table)
+
+carbom <- merge_phyloseq(sample, OTU, TAX)
+carbom
+
+# Visualize data
+
+sample_names(carbom)
+
+rank_names(carbom)
+
+sample_variables(carbom)
+
+
+summarize_phyloseq(carbom)
+```
+
+
+
+## *Pre-processing Confirmations*
+
+*Group according to sample sources Glomeris hingdut and Glomeris faecal pellets*
+```{r group according to sample sources, cache = T}
+#Glomeris faecal pellets
+Glo_faecal <- subset_samples( carbom, sample_names(carbom) =="Fp-G1D_S131" | sample_names(carbom) == "Fp-G1H_S132" | sample_names(carbom) == "Fp-G1I_S133" | sample_names(carbom) == "Fp-G2B_S134" | sample_names(carbom) == "Fp-G2D_S135" | sample_names(carbom) == "Fp-G2F_S136" | sample_names(carbom) == "Fp-G3B_S138" | sample_names(carbom) == "Fp-G3F_S139" | sample_names(carbom) == "Fp-G3G_S140" | sample_names(carbom) == "Fp-G4F_S141" | sample_names(carbom) == "Fp-G4H_S142" | sample_names(carbom) == "Fp-G4J_S143")
+Glo_faecal
+
+# Phyloseq object Summary
+summarize_phyloseq(Glo_faecal)
+```
+
+
+
+
+
+
+## **Alpha diversity for Globolus faecal dataset**
+
+*Diversity indices in Globolus faecal dataset*
+
+*Rarefy without replacement and plot richness*
+```{r Globolus faecal Rarefy without replacement, cache = T}
+
+
+# Plot richness for all samples
+theme_set(theme_bw())
+Glo_faecal_plot_richness <- plot_richness(Glo_faecal, x = 'Sample.name', measures = c('Chao1', 'Shannon', 'observed', "Simpson", "InvSimpson", "ACE", "Fisher"), color = 'Treatment') +
+  ggtitle("a)") +
+  xlab(" ") +
+  theme(axis.text.x = element_text(
+    angle = 45,
+    vjust = 0.9,
+    hjust = 0.9
+  )) + geom_boxplot()
+Glo_faecal_plot_richness$data$Treatment = factor(Glo_faecal_plot_richness$data$Treatment, level = c("Control", "Sterile feed", "Antibiotics (5X)", "Antibiotics (2X)"))
+Glo_faecal_plot_richness
+
+
+# Plot richness for all treatments
+theme_set(theme_bw())
+Glo_faecal_plot_richness1 <- plot_richness(Glo_faecal, x = 'Treatment', measures = c('Chao1', 'Shannon', 'observed', "Simpson", "InvSimpson", "ACE", "Fisher"), color = 'Treatment') +
+  ggtitle("a)") +
+  xlab(" ") +
+  theme(axis.text.x = element_text(
+    angle = 90,
+    vjust = 0.9,
+    hjust = 0.9
+  )) + geom_boxplot() +
+theme(text = element_text(size = 16),  
+axis.text = element_text(size = 10))
+Glo_faecal_plot_richness1$data$Treatment = factor(Glo_faecal_plot_richness1$data$Treatment, level = c("Control", "Sterile feed", "Antibiotics (5X)", "Antibiotics (2X)"))
+Glo_faecal_plot_richness1
+
+ggsave("Glo_faecal_richness_its.png", device = "png", path = "Richness_plot")
+
+# Alpha diversity is used to measure the diversity within a sample and answers the question "how many?". It allows you to look at number of different taxa within each sample separately. If a sample has high alpha diversity it contains many organisms. Alpha diversity is how many different taxa are detected in each sample. Alpha diversity looks at each sample and asks how many. There are several methods that can be used to look at and understand alpha diversity. When talking about alpha diversity, we are looking at two things:
+# 1. Species richness - a count of the number of different species present in a sample. It does not take into account the abundance of the species or their relative distributions.
+# 2. Species evenness - a measure of relative abundance of different species that make up the richness
+
+# Measures for evenness and richness:
+# 1. Observed - only considers observed ASVs.
+# 2. CHAO1 index - considers not only observed otus, but also non-observed rare species.
+# 3. The Simpson diversity index is used to calculate a measure of diversity taking into account the number of taxa as well as the abundance. The simpson index gives more weight to common or dominant species which means a few rare species with only a few representatives will not affect the diversity of the sample.
+# 4. The Shannon index summarizes the diversity in the population while assuming all species are represented in a sample and they are randomly sampled. The Shannon index increases as both the richness and evenness of the community increase. 
+
+
+
+```
+
+
+Measure Richness, Shannon, etc, combine with metadta, and then write into a csv file
+```{r Globolus faecal measure Richness, Shannon, for the phyloseq object, cache = T}
+Glo_faecal_alpha.its <- estimate_richness(Glo_faecal, measures=c("Observed", "Chao1", "Shannon", "Simpson", "InvSimpson", "ACE", "Fisher"))
+Glo_faecal_alpha.its
+
+
+# Add SampleID column to the alpha dataframe
+Glo_faecal_alpha.its$Sample <- sample_names(Glo_faecal)
+
+# Merge alpha and Globolus faecal dataset into a single dataframe
+Glo_faecal_metad_alpha_its <- merge(psmelt(Glo_faecal), Glo_faecal_alpha.its)
+
+# Write it into a csv file
+write.csv(Glo_faecal_metad_alpha_its, file.path("Glo_faecal_alpha_its.csv")) # writes out a .csv file that you can open in excel
+```
+Let's go ahead and write only metrics with mean and sd in table
+```{r Globolus faecal summarize our models, cache = T}
+# Then make a table of means and sd of Observed, ACE, Shannon, Simpson and Fisher and Pielou metrics. This is for publication purposes. You can freely change the columns of diversity metrics to retain. 
+
+
+# Mean for treatment
+Glo_faecal_alphmean.its = aggregate(Glo_faecal_metad_alpha_its[,c("Observed", "Chao1", "se.chao1", "Shannon", "Simpson", "InvSimpson", "ACE", "se.ACE", "Fisher")],list(Glo_faecal_metad_alpha_its$Sample.name, Glo_faecal_metad_alpha_its$Treatment), mean)
+
+# SD for treatment
+Glo_faecal_alphsd.its = aggregate(Glo_faecal_metad_alpha_its[, c("Observed", "Chao1", "se.chao1", "Shannon", "Simpson", "InvSimpson", "ACE", "se.ACE", "Fisher")], list(Glo_faecal_metad_alpha_its$Sample.name, Glo_faecal_metad_alpha_its$Treatment), sd)
+
+# SE for treatment
+se <- function(x) sd(x) / sqrt(length(x))
+Glo_faecal_alphse.its = aggregate(Glo_faecal_metad_alpha_its[, c("Observed", "Chao1", "se.chao1", "Shannon", "Simpson", "InvSimpson", "ACE", "se.ACE", "Fisher")], list(Glo_faecal_metad_alpha_its$Sample.name, Glo_faecal_metad_alpha_its$Treatment), se)
+
+# Rename the columns
+colnames(Glo_faecal_alphmean.its) <- c("Sample.name", "Treatment",  "Observed", "Chao1", "se.chao1", "Shannon", "Simpson", "InvSimpson", "ACE", "se.ACE", "Fisher")
+colnames(Glo_faecal_alphsd.its) <- c("Sample.name", "Treatment", "Observed.sd", "Chao1.sd", "se.chao1.sd", "Shannon.sd", "Simpson.sd", "InvSimpson.sd", "ACE.sd", "se.ACE.sd", "Fisher.sd")
+colnames(Glo_faecal_alphse.its) <- c("Sample.name", "Treatment", "Observed.se", "Chao1.se", "se.chao1.se", "Shannon.se", "Simpson.se", "InvSimpson.se", "ACE.se", "se.ACE.se", "Fisher.se")
+
+    
+# Merge and write into a csv file
+Glo_faecal.mean.sd.se <- Reduce(merge, list(Glo_faecal_alphmean.its, Glo_faecal_alphsd.its, Glo_faecal_alphse.its))
+options(digits=2)
+
+write.csv(Glo_faecal.mean.sd.se, file.path("Glo_faecal_alpha_mean_sd_se.csv"))
+```
+
+**Intra-sample variability: Non-parametic test for alpha diversity**
+```{r Globolus faecal summarize our models, cache = T}
+####################### Non-parametic test for alpha diversity
+detach(package:plyr)
+# Melt the data for plotting
+data_melted <- reshape2::melt(Glo_faecal.mean.sd.se, id.vars = c("Sample.name", "Treatment")) %>%
+               subset(variable %in% c("Observed", "Chao1", "Shannon", "Simpson", "InvSimpson", "ACE"))
+
+# Display the melted data
+data_melted %>%  kable(digits = c(0, 1, 1, 1, 0, 1)) %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"), full_width = F) 
+
+
+# Function to compute Kruskal-Wallis test and extract p-value
+compute_kruskal_pvalue <- function(data) {
+  kruskal_result <- kruskal.test(value ~ Sample.name, data = data)
+  p_value <- broom::tidy(kruskal_result)$p.value
+  return(p_value)
+}
+
+# Compute Kruskal-Wallis p-values for each Treatment and variable combination
+p_values_list <- data_melted %>%
+  group_by(Treatment, variable) %>%
+  do(p_value = compute_kruskal_pvalue(.)) %>%
+  ungroup()
+
+# Expand the list of p_values
+p_values_list_expanded <- p_values_list %>%
+  mutate(p_value = unlist(p_value))
+
+# Print the result
+print(p_values_list_expanded)
+
+p_values_list_expanded %>%  kable(digits = c(0, 1, 1, 1, 0, 1)) %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"), full_width = F) 
+
+# Convert p-values to alphabetical representation
+p_values_list_expanded$alpha_p_value <- factor(ifelse(p_values_list_expanded$p_value > 0.05, "a", "b"))
+
+# Create violin plots with p-value annotations
+
+p_Glo_faecal <- ggplot(data_melted, aes(x = Treatment, y = value, fill = Treatment)) +
+  geom_violin() +
+  geom_jitter(width = 0.2, alpha = 0.5) +
+  labs(x = "Treatment", y = "Value") +
+  #theme_minimal() +
+  facet_wrap(~ variable, scales = "free_y") +
+  scale_fill_manual(values = pom4) +
+  theme(legend.position = "right", text = element_text(size = 26), strip.text.x = element_text(size = 24)) +
+  theme(legend.text = element_text(colour = "black", size = 24), axis.text.x = element_text(size = 24, hjust = 1, vjust = 0.5, colour = "black", angle = 90), axis.title = element_text(size = 24), legend.title = element_text(size = 24)) +
+  geom_text(data = p_values_list_expanded, aes(x = Treatment, y = Inf, label = alpha_p_value), hjust = 0.25, vjust = 0.4, size = 7)
+p_Glo_faecal
+
+```
+
+
+**Inter-sample variability: Non-parametic test for alpha diversity**
+```{r Globolus faecal summarize our models, cache = T}
+# Convert 'value' column to numeric
+detach(package:plyr)
+# Reorder levels of 'Treatment' factor
+data_melted$Treatment <- factor(data_melted$Treatment, levels = c("Control", "Sterile feed", "Antibiotics (5X)", "Antibiotics (2X)"))
+
+p_Glo_faecal <- ggplot(data_melted, aes(x = Treatment, y = value, fill = Treatment)) +
+  geom_violin() +
+  geom_jitter(width = 0.2, alpha = 0.5) +
+  labs(x = "Treatment", y = "Value") +
+  #theme_minimal() +
+  facet_grid(variable ~ ., scales = "free_y") +
+  scale_fill_manual(values = pom4) +
+  theme(legend.position = "right", text = element_text(size = 26), strip.text.x = element_text(size = 24)) +
+  theme(legend.text = element_text(colour = "black", size = 24), axis.text.x = element_text(size = 24, hjust = 1, vjust = 0.5, colour = "black", angle = 90), axis.title = element_text(size = 24), legend.title = element_text(size = 24)) 
+  
+p_Glo_faecal
+
+
+# Convert 'value' column to numeric
+data_melted$value <- as.numeric(data_melted$value)
+
+# Reorder levels of 'Treatment' factor
+data_melted$Treatment <- factor(data_melted$Treatment, levels = c("Control", "Sterile feed", "Antibiotics (5X)", "Antibiotics (2X)"))
+
+# Summarize data
+Glo_data_summarized <- data_melted %>%
+  group_by(Treatment, variable) %>%
+  summarise(sum_value = mean(value))
+
+
+# Function to compute Kruskal-Wallis test and extract p-value
+compute_kruskal_pvalue <- function(data) {
+  kruskal_result <- kruskal.test(sum_value ~ Treatment, data = data)
+  p_value <- broom::tidy(kruskal_result)$p.value
+  return(p_value)
+}
+
+# Compute Kruskal-Wallis p-values for each Treatment and variable combination
+p_values_list <- Glo_data_summarized %>%
+  group_by(variable) %>%
+  do(p_value = compute_kruskal_pvalue(.)) %>%
+  ungroup()
+
+# Expand the list of p_values
+p_values_list_expanded <- p_values_list %>%
+  mutate(p_value = unlist(p_value))
+
+# Print the result
+print(p_values_list_expanded)
+
+
+
+#### Statistical test
+# List of variables
+variable_names <- c("Observed", "Chao1", "Shannon", "Simpson", "InvSimpson", "ACE")
+
+# Initialize an empty data frame to store results
+data_frames <- data.frame()
+
+# Loop through each variable
+for (var_name in variable_names) {
+  PT <- Glo_data_summarized %>%
+    filter(variable == var_name) %>%
+    dunnTest(sum_value ~ Treatment, data = ., method = "bh")
+  PT2 <- PT$res
+  
+  letter_grouping <- cldList(comparison = PT2$Comparison, p.value = PT2$P.adj, threshold = 0.05)
+  
+  # Create a data frame with the desired column
+  new_data <- data.frame(variable = rep(var_name, nrow(letter_grouping)))
+  
+  # Combine the new data frame with the existing output data frame
+  result_df <- cbind(new_data, letter_grouping)
+  
+  data_frames <- bind_rows(data_frames, result_df)
+}
+
+data_frames
+# Now data_frames contains the combined results for all variables
+
+# Rename Group to Treatment
+colnames(data_frames)[2] ="Treatment"
+
+
+# Define the renaming changes
+change <- c("Antibiotics(5X)" = "Antibiotics (5X)", 
+            "Antibiotics(2X)" = "Antibiotics (2X)", 
+            "Sterilefeed" = "Sterile feed")
+
+# Apply the changes to the "Treatment" column
+data_frames <- data_frames %>%
+  mutate(Treatment = ifelse(Treatment %in% names(change), change[Treatment], Treatment))
+
+# Print the updated data frame
+print(data_frames)
+
+data_frames$Treatment <- factor(data_frames$Treatment, levels = c("Control", "Sterile feed", "Antibiotics (5X)", "Antibiotics (2X)"))
+
+data_frames$variable <- factor(data_frames$variable, levels = c("Observed", "Chao1", "Shannon", "Simpson", "InvSimpson", "ACE"))
+
+# Print the updated data frame
+print(data_frames)
+
+data_frames %>%
+  mutate(Treatment = factor(Treatment, levels = c("Control", "Sterile feed", "Antibiotics (5X)", "Antibiotics (2X)"))) %>%
+  kable(digits = c(0, 1, 1, 1, 0, 1)) %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"), full_width = FALSE)
+
+
+p_Glo_faecal +
+ geom_label(data = data_frames, aes(x = Treatment, y = -Inf, label = Letter, group = Treatment), 
+             vjust = 0.1, inherit.aes = FALSE)
+
+ggsave("Glo_faecal_alpha_diversity.svg",width = 20, height = 35, units = "cm")
+```
+
+
+

@@ -1,0 +1,389 @@
+---
+title: "Microbiome curing through antibiotics"
+subtitle: "Methane production analysis"
+author: "Nweze Julius"
+date: "`r Sys.Date()`"
+link-citations: yes
+csl: fems-microbiology-ecology.csl
+output:
+  rmarkdown::html_document:
+    toc: true
+    toc_float: true
+    toc_depth: 5
+    keep_md: true
+    number_sections: false
+    highlight: "pygments"
+    theme: "flatly"
+    dev: "png"
+    df_print: "kable"
+    fig_caption: true
+    code_folding: "show"
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r libraries, include=F}
+# Load libraries
+#.libPaths(c('~/R/library', .libPaths())) # Uncomment if you have no write access to R path
+
+repo <- "http://cran.wu.ac.at"
+lib.loc <- Sys.getenv("R_LIBS_USER")
+
+update.packages(
+    lib.loc, 
+    repos = repo,
+    ask = FALSE
+)
+
+.cran_libs <- c(
+  "knitr", # A General-Purpose Package for Dynamic Report Generation in R
+  "kableExtra", # Construct Complex Table with 'kable' and Pipe Syntax
+  "rmarkdown", # Dynamic Documents for R
+  "extrafont", # for extra figure fonts
+  "tidyverse", # for dplyr forcats ggplot2 readr tibble
+  "grid", # The Grid Graphics Package
+  "magrittr", # pipes
+  "scales", # Generic plot scaling methods
+  "svglite", # for svg files
+  "vegan",
+  "ggplot2", # for barplot
+  "ggpubr",
+  "car", # Companion to Applied Regression
+  "rcompanion", #Functions to Support Extension Education Program Evaluation
+  "multcomp", # Simultaneous Inference in General Parametric Models 
+  "nlme", # Fit Linear Model Using Generalized Least Squares
+  "ggResidpanel", # Panels and Interactive Versions of Diagnostic Plots using 
+  "lsmeans", # Least-Squares Means
+  "hrbrthemes"
+  
+) 
+
+.inst <- .cran_libs %in% installed.packages()
+if (any(!.inst)) {
+   install.packages(.cran_libs[!.inst],
+                    repos = repo,
+                    lib = lib.loc)
+}
+
+.bioc_libs <- c(
+  #"multtest", #Resampling-based multiple hypothesis testing
+)
+
+.bioc_inst <- .bioc_libs %in% installed.packages()
+if (any(!.bioc_inst)) {
+   if (!requireNamespace("BiocManager", quietly = TRUE))
+   install.packages("BiocManager")
+   BiocManager::install(ask = F, lib = lib.loc)  # upgrade bioC packages
+   BiocManager::install(.bioc_libs[!.bioc_inst], ask = F, lib = lib.loc)
+}
+
+.local_libs <- c()
+
+.inst <- names(.local_libs) %in% installed.packages()
+if (any(!.inst)) {
+   install.packages(paste0("~/R/", .local_libs[!.inst]) ,repos = NULL, type = "source", lib = lib.loc)
+}
+
+.github_libs <- c()
+
+.github_lib_names <- stringr::str_replace(.github_libs, ".*/(.*)$", "\\1")
+
+.github_inst <- .github_lib_names %in% installed.packages()
+if (any(!.github_inst)) {
+  devtools::install_github(.github_libs[!.github_inst],
+                           lib = lib.loc,
+                           dependencies = TRUE)
+}
+
+# Load packages into session, and print package version
+(loaded.libs <- sapply(c(.cran_libs, .bioc_libs, names(.local_libs), .github_lib_names), require, character.only = TRUE))
+if (!all(loaded.libs)) {stop(paste("Package(s):", names(loaded.libs[loaded.libs == FALSE]), "could not be loaded"))}
+sapply(c(.cran_libs, .bioc_libs, names(.local_libs), .github_lib_names), packageVersion)
+```
+
+```{r style settings, include=F}
+options(width = 90, knitr.table.format = "html") 
+opts_chunk$set(
+  warning = FALSE,
+  message = FALSE,
+  cache = TRUE,
+  dev = "svglite",
+  fig.ext = "svg",
+  dpi = 300,
+#  fig.width = 12,
+#  fig.height = 8,
+  cache.path = "Weight_loss_cache/",
+  fig.path = "Weight_loss_figs/"
+)
+f_name <- "DejaVu Sans" #sub("\\s//", "", f_name)
+f_size <- 14
+font_import(pattern = "DejaVuSans", prompt = FALSE)
+loadfonts() # registers fonts
+theme_set(theme_bw(base_size = f_size, base_family = f_name)) # set theme for plots
+pom4 <- ggpomological:::pomological_palette[c(2, 9, 3, 1)] # set colours
+```
+
+```{r functions, include=F}
+PlotLmResid <- function(lm.df, which = c(1:6), mfrow = c(3, 2)){
+
+  if (length(levels(as.factor(lm.df$.fitted))) < 10) {# if number of unique x values is <10 just draw a line through the means
+    smoother <- stat_summary(fun.y = mean, colour = "red", geom = "line")
+  } else smoother <- stat_smooth(method = "loess", geom = "smooth", se = FALSE, colour = "firebrick", size = 1)
+  
+  # residuals vs fitted
+  g1 <- ggplot(lm.df, aes(.fitted, .resid)) +
+    geom_point()  +
+    smoother + 
+    geom_hline(yintercept = 0, linetype = 2, size = .2) +
+    scale_x_continuous("Fitted Values") +
+    scale_y_continuous("Residual") +
+    labs(title = "Residuals vs Fitted")
+  
+  # normal qq
+  a <- quantile(lm.df$.stdresid, c(0.25, 0.75), na.rm = TRUE)
+  b <- qnorm(c(0.25, 0.75))
+  slope <- diff(a)/diff(b)
+  int <- a[1] - slope * b[1]
+  g2 <- ggplot(lm.df, aes(sample = .stdresid)) +
+    stat_qq() +
+    geom_abline(slope = slope, intercept = int, colour = "firebrick", size = 1) +
+      scale_x_continuous("Theoretical Quantiles") +
+      scale_y_continuous("Standardized Quantiles") +
+      labs(title = "Normal Q-Q")
+ 
+  # scale-location
+  g3 <- ggplot(lm.df, aes(.fitted, sqrt(abs(.stdresid)))) +
+    geom_point() +
+    smoother +
+    scale_x_continuous("Fitted Values") +
+    scale_y_continuous("Root of Standardized Residuals") +
+    labs(title = "Scale-Location")
+ 
+  # residuals vs leverage
+  g4 <- ggplot(lm.df, aes(factors, .stdresid)) +
+    geom_point() +
+    smoother +
+    geom_hline(yintercept = 0, linetype = 2, size = .2) +
+    scale_x_continuous("Factor Level Combinations") +
+    scale_y_continuous("Standardized Residuals") +
+    labs(title = "Residuals vs Factor Levels")
+ 
+#   # cook's distance
+#   g5 <-  ggplot(lm.df, aes(rows, .cooksd, ymin=0, ymax=.cooksd)) +
+#     geom_point() + geom_linerange() +
+#     scale_x_continuous("Observation Number") +
+#     scale_y_continuous("Cook's distance") +
+#     labs(title="Cook's Distance")  
+  
+  # cooksd vs leverage
+  g5 <- ggplot(lm.df, aes(factors, .cooksd)) +
+    geom_point() +
+    smoother +
+    scale_x_continuous("Factor Level Combinations") +
+    scale_y_continuous("Cook's distance") +
+    labs(title = "Cook's dist vs Leverage")
+  
+  # g6 <- PlotACF(lm.df)
+  bw <- diff(range(lm.df$.resid)) / (2 * IQR(lm.df$.resid) / length(lm.df$.resid) ^ (1/3))
+  sshist <- function(x){ # optimise bins
+  # 2006 Author Hideaki Shimazaki
+  # Department of Physics, Kyoto University
+  # shimazaki at ton.scphys.kyoto-u.ac.jp
+	N <- 2 : 100
+	C <- numeric(length(N))
+	D <- C
+
+	for (i in 1:length(N)) {
+		D[i] <- diff(range(x)) / N[i]
+
+		edges = seq(min(x), max(x), length=N[i])
+		hp <- hist(x, breaks = edges, plot=FALSE)
+		ki <- hp$counts
+
+		k <- mean(ki)
+		v <- sum((ki-k) ^ 2) / N[i]
+
+		C[i] <- (2 * k-v) / D[i] ^ 2	#Cost Function
+	}
+
+	idx <- which.min(C)
+	optD <- D[idx]
+
+	bins <- seq(min(x), max(x), length=N[idx])
+	# h = hist(x, breaks = bins)
+	# rug(x)
+
+	return(bins)
+  }
+  
+  bins <- sshist(lm.df$.resid)
+  g6 <- ggplot(lm.df, aes(.resid)) + 
+    geom_histogram(breaks = bins)
+ 
+  plots <- list(g1, g2, g3, g4, g5, g6)
+ 
+  # making the plots
+  grid.newpage()
+ 
+  if (prod(mfrow) > 1) {
+    mypos <- expand.grid(1:mfrow[1], 1:mfrow[2])
+    mypos <- mypos[with(mypos, order(Var1)), ]
+    pushViewport(viewport(layout = grid.layout(mfrow[1], mfrow[2])))
+    formatter <- function(.){}
+  } else {
+    mypos <- data.frame(matrix(1, length(which), 2))
+    pushViewport(viewport(layout = grid.layout(1, 1)))
+    formatter <- function(.) {
+      .dontcare <- readline("Hit <Return> to see next plot: ")
+      grid.newpage()
+    }
+  }
+ 
+  j <- 1
+  for (i in which) {
+    formatter()
+    print(plots[[i]], vp = viewport(layout.pos.row = mypos[j, ][1], layout.pos.col = mypos[j, ][2]))
+    j <- j + 1
+  }
+}
+
+PlotACF <- function(lm.df){
+  ## generate ACF plot for lm and lme
+  # compute acf without plotting
+  acz <- acf(lm.df$.resid, plot = F)
+  # convert to data frame
+  acd <- data.frame(lag = acz$lag, acf = acz$acf)
+  # use data frame for ggplot
+  ggplot(acd, aes(lag, acf)) + 
+    geom_bar(colour = "black", fill = "black", stat = "identity", position = "dodge", width = 0.01) +
+    geom_point(colour = "black") +
+    geom_hline(yintercept = c(0.05, -0.05), linetype = "dashed") +
+    geom_hline(yintercept = 0)
+}
+```
+
+[roey.angel@bc.cas.cz](mailto: roey.angel@bc.cas.cz)  
+
+## Methane production analysis
+Analysis of methane production in response to antibiotics treatment.
+Species tested: *E. pulchripes* 
+
+### *E. pulchripes* methane production analysis 
+
+**Load data **
+```{r load E. pulchripes data, cache = T}
+read_csv("13_Methane_production_Epibolus.csv",
+         trim_ws = TRUE,
+         col_names = TRUE) %>% # read the csv file
+  mutate_at(c("Code",
+              "Treatment",
+              "Replicates"),
+            ~ (factor(.))) %>% # convert to factor
+    mutate(Treatment = fct_relevel(Treatment, "Control", "Sterile", "2X Diluted", "Undiluted")) -> # arrange factor levels 4 plotting
+  Methane_production_Epibolus
+```
+
+#### Plot CH4  Production (nmol/mg/day) vs Weight (g)
+
+*Barplot of CH4  Production for all replicates**
+```{r plot all replicate Methane production by Epibolus, cache=TRUE}
+ggplot(Methane_production_Epibolus, aes(x = Code, y = `CH4 Production (nmol/mg/day)`, fill = Treatment, group = Code)) + 
+  geom_bar(stat = 'identity', position='dodge') +  xlab("Groups")
+```
+
+
+**Plot CH4  Production (ppm/g) of means**
+```{r plot mean+SE Methane Production, cache=TRUE}
+Methane_production_Epibolus %>%  # the name of the new data frame and the data frame to be summarised
+  drop_na() %>% # drop rows with missing values
+  group_by(Treatment) %>%   # the grouping variable
+  summarise(`Mean CH4 Production (nmol/mg/day)` = mean(`CH4 Production (nmol/mg/day)`),  # calculates the mean of each group
+            StD = sd(`CH4 Production (nmol/mg/day)`), # calculates the standard deviation of each group
+            n = n(),  # calculates the sample size per group
+            SE = sd(`CH4 Production (nmol/mg/day)`)/sqrt(n())) -> # calculates the standard error of each group
+  Methane_production_Epibolus_mean
+
+# Create plot
+# Create plot
+ggplot(Methane_production_Epibolus_mean, aes(x = Treatment, y = `Mean CH4 Production (nmol/mg/day)`)) + 
+  geom_bar(stat = 'identity', position='dodge', colour = pom4, aes(fill=Treatment)) +
+  geom_errorbar(aes(ymin = `Mean CH4 Production (nmol/mg/day)` - SE, ymax = `Mean CH4 Production (nmol/mg/day)` + SE), width=.2,
+                 position=position_dodge(.9)) 
+```
+
+```{r table mean+SE methane production, cache=TRUE}
+Methane_production_Epibolus_mean %>% # output a table of group means
+  kable(., digits = c(0, 1, 1, 1, 0, 1)) %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"), full_width = F)
+```
+
+#### Anova tests
+**Compare methane production between groups**
+```{r t0 methane production aov, cache=T}
+Methane_production_Epibolus %>% 
+  aov(`CH4 Production (nmol/mg/day)` ~ Treatment, .) -> # fit an anova model
+  aov_t0
+  
+print(Anova(aov_t0)) # print results
+
+aov_t0_df <- fortify(aov_t0) # make a data frame for plotting
+factor.combinations <-
+  as.numeric(factor(aov_t0_df$Treatment),
+             levels = unique(as.character(paste(aov_t0_df$Treatment)))
+  ) # needed for "residuals vs leverage
+mod_data_df <-
+  cbind(aov_t0_df,
+        rows = 1:nrow(aov_t0_df),
+        factors = factor.combinations)
+
+PlotLmResid(mod_data_df) # plot residuals
+```
+
+The ANOVA model indicates a significant different in the methane production of the animals.
+
+**Post-hoc tests for methane production between groups**
+```{r t0 colony counts post-hoc, cache=T}
+TukeyHSD(aov_t0) # Compute Tukey Honest Significant Differences
+```
+
+Pairs: Sterile-Control, 2X diluted-Control and Undiluted-Control have significant differences between them but there's no difference within and between antibiotic treatment and sterlie food!
+
+#### Further methane production analysis
+
+**Correlation analysis**
+**Between the replicates**
+```{r correlation of weight and methane production, cache=T}
+   cor.test(Methane_production_Epibolus$`Weight (g)`,
+           Methane_production_Epibolus$`CH4 Production (nmol/mg/day)`,  
+           method="pearson", use = "complete.obs")   #  method="pearson"
+
+
+scatter_plot <- ggplot(Methane_production_Epibolus, aes(`Weight (g)`, `CH4 Production (nmol/mg/day)`))
+scatter_plot + geom_point(size=3, colour = "#0000EA") + labs(x = "Weight (g)", y = "CH4 Production (nmol/mg/day)") + geom_smooth(method="lm") + stat_cor(method = "pearson") 
+``` 
+Thus we reject the null hypothesis that there is no (Pearson) correlation between weight and methane production (cor = 0.49, p-value = 2.703e-03). As body mass increases so does methane production.
+
+**Between the group means**
+```{r correlation of mean weight and methane production, cache=T}
+Methane_production_Epibolus %>%  # the name of the new data frame and the data frame to be summarised
+  drop_na() %>% # drop rows with missing values
+  group_by(Treatment) %>%   # the grouping variable
+  summarise(`Mean CH4 Production (nmol/mg/day)` = mean(`CH4 Production (nmol/mg/day)`),  # calculates the mean of each group
+            StD = sd(`CH4 Production (nmol/mg/day)`), # calculates the standard deviation of each group
+            n = n(),  # calculates the sample size per group
+            SE = sd(`CH4 Production (nmol/mg/day)`)/sqrt(n())) -> # calculates the standard error of each group
+  Methane_production_Epibolus_mean
+
+Methane_production_Epibolus %>%  # the name of the new data frame and the data frame to be summarised
+  drop_na() %>% # drop rows with missing values
+  group_by(Treatment) %>%   # the grouping variable
+  summarise(`Mean Weight (g)` = mean(`Weight (g)`),  # calculates the mean of each group
+            StD = sd(`Weight (g)`), # calculates the standard deviation of each group
+            n = n(),  # calculates the sample size per group
+            SE = sd(`Weight (g)`)/sqrt(n())) -> # calculates the standard error of each group
+  Weight_Epibolus_mean
+
+cor.test(Weight_Epibolus_mean$`Mean Weight (g)`, Methane_production_Epibolus_mean$`Mean CH4 Production (nmol/mg/day)`,
+  method = "pearson", use = "complete.obs")
+``` 
+There is a strong (Pearson) positive correlation between the mean weight and the mean methane production (cor = 0.96, p-value = 0.037).

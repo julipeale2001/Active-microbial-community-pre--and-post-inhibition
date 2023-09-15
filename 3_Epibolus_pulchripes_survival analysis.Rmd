@@ -1,0 +1,378 @@
+---
+title: "Microbiome curing through antibiotics"
+subtitle: "Survival analysis analysis"
+author: "Nweze Julius"
+date: "`r Sys.Date()`"
+link-citations: yes
+csl: fems-microbiology-ecology.csl
+output:
+  rmarkdown::html_document:
+    toc: true
+    toc_float: true
+    toc_depth: 5
+    keep_md: true
+    number_sections: false
+    highlight: "pygments"
+    theme: "flatly"
+    dev: "png"
+    df_print: "kable"
+    fig_caption: true
+    code_folding: "show"
+---
+
+```{r libraries, include=F}
+# Load libraries
+#.libPaths(c('~/R/library', .libPaths())) # Uncomment if you have no write access to R path
+
+repo <- "http://cran.wu.ac.at"
+lib.loc <- Sys.getenv("R_LIBS_USER")
+
+update.packages(
+    lib.loc, 
+    repos = repo,
+    ask = FALSE
+)
+
+.cran_libs <- c(
+  "knitr", # A General-Purpose Package for Dynamic Report Generation in R
+  "kableExtra", # Construct Complex Table with 'kable' and Pipe Syntax
+  "rmarkdown", # Dynamic Documents for R
+  "extrafont", # for extra figure fonts
+  "tidyverse", # for dplyr forcats ggplot2 readr tibble
+  "grid", # The Grid Graphics Package
+  "magrittr", # pipes
+  "scales", # Generic plot scaling methods
+  "svglite", # for svg files
+  "vegan",
+  "car", # Companion to Applied Regression
+  "rcompanion", #Functions to Support Extension Education Program Evaluation
+  "multcomp", # Simultaneous Inference in General Parametric Models 
+  "nlme", # Fit Linear Model Using Generalized Least Squares
+  "ggResidpanel", # Panels and Interactive Versions of Diagnostic Plots using 
+  "lsmeans", # Least-Squares Means
+  "survminer", # For Survival Analysis
+  "ranger",
+  "readr",
+  "forcats",
+  "dplyr",
+  "ggfortify",
+  "gtsummary", 
+   "cmprsk",  # Competing Risks Packages
+  "sm",  # Smooth survival plot - quantile of survival
+  "prodlim",
+  "pec"
+) 
+
+.inst <- .cran_libs %in% installed.packages()
+if (any(!.inst)) {
+   install.packages(.cran_libs[!.inst],
+                    repos = repo,
+                    lib = lib.loc)
+}
+
+.bioc_libs <- c(
+  #"multtest", #Resampling-based multiple hypothesis testing
+)
+
+.bioc_inst <- .bioc_libs %in% installed.packages()
+if (any(!.bioc_inst)) {
+   if (!requireNamespace("BiocManager", quietly = TRUE))
+   install.packages("BiocManager")
+   BiocManager::install(ask = F, lib = lib.loc)  # upgrade bioC packages
+   BiocManager::install(.bioc_libs[!.bioc_inst], ask = F, lib = lib.loc)
+}
+
+.local_libs <- c()
+
+.inst <- names(.local_libs) %in% installed.packages()
+if (any(!.inst)) {
+   install.packages(paste0("~/R/", .local_libs[!.inst]) ,repos = NULL, type = "source", lib = lib.loc)
+}
+
+.github_libs <- c()
+
+.github_lib_names <- stringr::str_replace(.github_libs, ".*/(.*)$", "\\1")
+
+.github_inst <- .github_lib_names %in% installed.packages()
+if (any(!.github_inst)) {
+  devtools::install_github(.github_libs[!.github_inst],
+                           lib = lib.loc,
+                           dependencies = TRUE)
+}
+
+# Load packages into session, and print package version
+(loaded.libs <- sapply(c(.cran_libs, .bioc_libs, names(.local_libs), .github_lib_names), require, character.only = TRUE))
+if (!all(loaded.libs)) {stop(paste("Package(s):", names(loaded.libs[loaded.libs == FALSE]), "could not be loaded"))}
+sapply(c(.cran_libs, .bioc_libs, names(.local_libs), .github_lib_names), packageVersion)
+```
+
+```{r style settings, include=F}
+options(width = 90, knitr.table.format = "html") 
+opts_chunk$set(
+  warning = FALSE,
+  message = FALSE,
+  cache = TRUE,
+  dev = "svglite",
+  fig.ext = "svg",
+  dpi = 300,
+#  fig.width = 12,
+#  fig.height = 8,
+  cache.path = "Survival analysis analysis_loss_cache/",
+  fig.path = "Weight_loss_figs/"
+)
+f_name <- "DejaVu Sans" #sub("\\s//", "", f_name)
+f_size <- 14
+font_import(pattern = "DejaVuSans", prompt = FALSE)
+loadfonts() # registers fonts
+theme_set(theme_bw(base_size = f_size, base_family = f_name)) # set theme for plots
+pom4 <- ggpomological:::pomological_palette[c(2, 9, 3, 1)] # set colours
+```
+
+
+**Load data for E. pulchripe survival analysis**
+```{r load Epibolus survival analysis data, cache = T}
+
+read_csv("3_Epibolus_pul_weight.csv",
+         trim_ws = TRUE,
+         col_names = TRUE) %>% # read the csv file
+  mutate_at(c("Code",
+              "Treatment",
+              "Replicate",
+              "Individual"),
+            ~ (factor(.))) %>% # convert to factor
+   mutate(Treatment = fct_relevel(Treatment, "Control", "Sterile", "2X Diluted", "Undiluted")) -> # arrange factor levels 4 plotting
+  Epibolus_weight
+```
+
+# **Fitting survival curves**
+
+*Estimation of the median follow-up time*
+```{r Epibolus Estimation of the median,cache=T}
+quantile(prodlim(Hist(Time,Status)~ 1, data=Epibolus_weight,reverse=TRUE))
+```
+No median potential follow-up time of the study. 
+
+*Kaplan-Meier estimates of the probability of survival over time*
+```{r Epibolus Kaplan-Meier analysis, cache=T}
+km01 <- prodlim(Hist(Time,Status)~1,data=Epibolus_weight)
+plot(km01)
+ 
+# To do some fine tuning:
+
+km01 <- prodlim(Hist(Time,Status)~1,data=Epibolus_weight)
+par(mar=c(7,7,5,5),                          # margin of figure
+    mgp=c(4,1,0))                            # move axis label away from figure
+plot(km01,
+     xlab="Days",                           # label for x-axis
+     ylab="Absolute risk of death",          # label for y-axis
+     type="cuminc",                          # increasing risks = 1-survival instead of decreasing survival
+     axis1.at=seq(0,2900,365.25),            # time grid for x-axis
+     axis1.labels=0:7,                       # time labels for x-axis
+     axis2.las=2,                            # rotate labels of y-axis
+     atrisk.dist=1,                          # adjust numbers below the figure
+     atrisk.labels="Number of \nanimals: ") # labels for numbers below figure
+
+```
+
+*Kaplan-Meier estimates*
+```{r Epibolus Kaplan-Meier estimates, cache=T}
+# The first thing to do is to use Surv() to build the standard survival object. 
+# The variable time records survival time; status indicates whether the patient’s death was observed (status = 1) or that survival time was censored (status = 0).
+# Note that a “+” after the time in the print out of km indicates censoring.
+
+## Kaplan Meier Survival Curve
+fit <- survfit(Surv(Time, Status) ~1, data = Epibolus_weight)
+summary(fit, Time = c(7, 14, 21, 28, 35, 42))
+```
+
+*Kaplan Meyer Plot*
+```{r Epibolus Kaplan-Meier Plot, cache=T}
+plot(fit, xlab="Days", main = 'Kaplan Meyer Plot') # base graphics is always ready.
+
+ggsurvplot(fit)
+```
+
+**Stratified Kaplan-Meier**
+```{r Epibolus Stratified Kaplan-Meier,cache=T}
+km1 <- prodlim(Hist(Time,Status) ~Treatment,data=Epibolus_weight)
+plot(km1,
+     atrisk.labels=paste(c("Control", "Sterile", "2X Diluted", "Undiluted", ": ")),
+     atrisk.title="",
+     xlab="Days",  # label for x-axis
+     axis1.at=seq(0,42), # time grid for x-axis
+     legend.x="bottomleft", # positition of legend
+     legend.cex=0.8, # font size of legend
+     legend.title="Antibiotic Treatment Groups\n", # 
+     logrank=TRUE) # show log-rank p-value
+```
+
+*Next, we look at survival curves by treatment.*
+```{r Epibolus Kaplan-Meier estimates survival curves by treatment, cache=T}
+sfit <- survfit(Surv(Time, Status) ~Treatment, data = Epibolus_weight)
+ 
+ggsurvplot(sfit, data = Epibolus_weight)
+```
+
+
+*Customized survival curves one*
+```{r Epibolus Kaplan-Meier estimates Customized survival curves, cache=T}
+# Uber customized survival curves
+ggsurv <- ggsurvplot(
+           sfit,                     # survfit object with calculated statistics.
+           data = Epibolus_weight,             # data used to fit survival curves.
+           risk.table = TRUE,       # show risk table.
+           pval = TRUE,             # show p-value of log-rank test.
+           conf.int = F,         # show confidence intervals for 
+                                    # point estimates of survival curves.
+           palette = pom4,
+           xlim = c(0, 45),         # present narrower X axis, but not affect
+                                    # survival estimates.
+           xlab = "Time in days",   # customize X axis label.
+           break.time.by = 7,     # break X axis in time intervals by 500.
+           ggtheme = theme_light(), # customize plot and risk table with a theme.
+          risk.table.y.text.col = T,# colour risk table text annotations.
+          risk.table.height = 0.25, # the height of the risk table
+          risk.table.y.text = FALSE,# show bars instead of names in text annotations
+                                    # in legend of risk table.
+          ncensor.plot = TRUE,      # plot the number of censored subjects at time t
+          ncensor.plot.height = 0.25,
+          conf.int.style = "step",  # customize style of confidence intervals
+          surv.median.line = "hv",  # add the median survival pointer.
+          legend.labs = 
+            c("Control", "Sterile", "2X Diluted", "Undiluted")    # change legend labels.
+        )
+ggsurv
+```
+Although the four curves and three (except Undiluted) appear to overlap in the first 14 days and 35 days respectively, the control animals clearly have a better chance of surviving more than 42 days.
+From the summary, We find that the probability of survival in this study after day 14 and day 35 are 95% and 90% respectively.
+The associated lower and upper bounds of the 95% confidence interval are also displayed. The p-value shows that the treatment did not have a significant effect on the survival.
+
+**Log-rank test**
+```{r Epibolus Log-rank test,cache=T}
+survdiff(Surv(Time, Status)~ Treatment,data = Epibolus_weight)
+```
+
+**Median survival**
+*overall Kaplan-Meier*
+```{r Epibolus Median survival analysis,cache=T}
+km01 <- prodlim(Hist(Time, Status)~1,data=Epibolus_weight)
+quantile(km01)
+
+# Stratified Kaplan-Meier
+km1 <- prodlim(Hist(Time, Status)~ Treatment,data=Epibolus_weight)
+quantile(km1)
+
+```
+
+
+# Cox Proportional Hazards Model Analysis
+**Cox Proportional Hazards Model**
+Next, I’ll fit a Cox Proportional Hazards Model that makes use of all of the covariates in the data set.
+
+```{r Epibolus Cox Proportional Hazards, cache=T}
+
+# Fit Cox Model using Treatment 
+cox <- coxph(Surv(Time, Status) ~ Treatment, data = Epibolus_weight)
+summary(cox)
+cox_fit <- survfit(cox)
+# plot(cox_fit, main = "cph model", xlab="Days")
+autoplot(cox_fit)
+
+# Let’s create another model where we analyze all the weight losses in the dataset! This shows us how all the variables, when considered together, act to influence survival.
+
+# Fit Cox Model using weight loss or gain after 7 days 
+cox <- coxph(Surv(Time, Status) ~ Treatment + `Weight loss7 (g)`, data = Epibolus_weight)
+summary(cox)
+cox_fit <- survfit(cox)
+#plot(cox_fit, main = "cph model", xlab="Days")
+autoplot(cox_fit)
+
+# Fit Cox Model using weight loss or gain after 14 days 
+cox <- coxph(Surv(Time, Status) ~ Treatment + `Weight loss14 (g)`, data = Epibolus_weight)
+summary(cox)
+cox_fit <- survfit(cox)
+#plot(cox_fit, main = "cph model", xlab="Days")
+autoplot(cox_fit)
+
+# Fit Cox Model using weight loss or gain after 21 days 
+cox <- coxph(Surv(Time, Status) ~ Treatment + `Weight loss21 (g)`, data = Epibolus_weight)
+summary(cox)
+cox_fit <- survfit(cox)
+#plot(cox_fit, main = "cph model", xlab="Days")
+autoplot(cox_fit)
+
+# Fit Cox Model using weight loss or gain after 28 days 
+cox <- coxph(Surv(Time, Status) ~ Treatment + `Weight loss28 (g)`, data = Epibolus_weight)
+summary(cox)
+cox_fit <- survfit(cox)
+#plot(cox_fit, main = "cph model", xlab="Days")
+autoplot(cox_fit)
+
+
+# Fit Cox Model using weight loss or gain after 35 days 
+cox <- coxph(Surv(Time, Status) ~ Treatment + `Weight loss35 (g)`, data = Epibolus_weight)
+summary(cox)
+
+# Fit Cox Model using weight loss or gain after 42 days 
+cox <- coxph(Surv(Time, Status) ~ Treatment + `Weight loss42 (g)`, data = Epibolus_weight)
+summary(cox)
+
+
+
+# Formatting Cox regression results of Treatment using tbl_regression from the gtsummary package
+coxph(Surv(Time, Status) ~ Treatment, data = Epibolus_weight) %>% 
+  gtsummary::tbl_regression(exp = TRUE) 
+
+# To demonstrate using the survival package, along with ggplot2 and ggfortify, I’ll fit Aalen’s additive regression model for censored data
+
+aa_fit <-aareg(Surv(Time, Status) ~ Treatment, data = Epibolus_weight)
+aa_fit
+
+#summary(aa_fit)  # provides a more complete summary of results
+autoplot(aa_fit)
+```
+1. From the output from treatment, we can conclude that treatment did not have statistically significant coefficients.
+
+
+**Exponential model**
+survreg() fits accelerated failure models, not proportional hazards models. The coefficients are logarithms of ratios of survival times, so a positive coefficient means longer survival.
+```{r Epibolus Exponential model}
+res.exp <- survreg(Surv(Time, Status) ~ Treatment, data = Epibolus_weight, dist = "exponential")
+summary(res.exp)
+```
+Having treatment >1 accelerates the time to event by a factor of exp(Value) = 19.5, 18.7 and 18.8 for sterile, 2X and Und respectively ( 19.5, 18.7 and 18.8 times shorter survival time compared to the baseline survival).
+
+
+**Comparison of Kaplan-Meier and Cox regression**
+```{r Epibolus Comparison of Kaplan-Meier and Cox regression,cache=T}
+km.grade <- prodlim(Surv(Time, Status)~Treatment,data=Epibolus_weight)
+cox.grade <- coxph(Surv(Time, Status)~Treatment,data=Epibolus_weight,x=TRUE,y=TRUE)
+newdata <- data.frame(Treatment=c("Control", "Sterile", "2X Diluted", "Undiluted"))
+
+### first show Kaplan-Meier without confidence limits
+
+plot(km.grade, lty=1, lwd=3,
+      col=pom4, confint=FALSE)
+
+## now add survival estimates based on Cox regression 
+plotPredictSurvProb(cox.grade, lty=2,
+                    col=pom4,
+                    add=TRUE, sort(unique(Epibolus_weight$Time)),
+                    newdata=newdata)
+mtext("Comparison of univariate  Cox regression and stratified Kaplan-Meier")
+```
+
+
+**Plotting individualized survival probabilities**
+```{r Epibolus Plotting individualized survival probabilities,cache=T}
+cox2 <- coxph(Surv(Time, Status)~Treatment,data=Epibolus_weight,x=TRUE,y=TRUE)
+newdata <- data.frame(Treatment=c("Control", "Sterile", "2X Diluted", "Undiluted"))
+plotPredictSurvProb(cox2,
+                    sort(unique(Epibolus_weight$Time)),
+                    newdata=newdata,
+                    col=pom4,
+                    legend.title="Antibiotic Curing of Epibolus",
+                    legend.legend=c("Control", "Sterile", "2X Diluted", "Undiluted"))
+mtext("Individualized survival curves from multiple Cox regression
+",line=1.5,cex=1.3)
+```

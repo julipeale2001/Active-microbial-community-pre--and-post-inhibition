@@ -1,0 +1,482 @@
+---
+title: "Millipedes SIP"
+subtitle: "02 Decontaminate dataset"
+description: "V1.6"
+author: "Roey Angel"
+email: "roey.angel@bc.cas.cz"
+date: "`r Sys.Date()`"
+bibliography: references.bib
+link-citations: yes
+csl: fems-microbiology-ecology.csl
+output:
+  rmarkdown::html_document:
+    toc: true
+    toc_float: true
+    keep_md: true
+    number_sections: false
+    highlight: "pygments"
+    theme: "flatly"
+    dev: "png"
+    df_print: "kable"
+    fig_caption: true
+    code_folding: "show"
+---
+
+```{r}
+#| label = "libraries",
+#| include = F
+Sys.setenv(R_LIBS_USER = "~/R/library") # Uncomment if you have no write access to R path change to local library dir
+.libPaths(c(Sys.getenv("R_LIBS_USER"), .libPaths())) # Uncomment if you have no write access to R path
+library(extrafont) # Tools for using fonts, CRAN v0.17
+library(tidyverse) # Easily Install and Load the 'Tidyverse', CRAN v1.3.0
+library(magrittr) # A Forward-Pipe Operator for R, CRAN v2.0.1
+library(phyloseq) # Handling and analysis of high-throughput microbiome census data, Bioconductor v1.32.0
+library(decontam) # Identify Contaminants in Marker-gene and Metagenomics Sequencing Data, Bioconductor v1.8.0
+library(speedyseq) # Faster implementations of phyloseq functions, [github::mikemc/speedyseq] v0.5.3.9001 
+library(Biostrings) # Efficient manipulation of biological strings, Bioconductor v2.56.0
+library(svglite) # An 'SVG' Graphics Device, CRAN v1.2.3.2 
+library(visdat) # Preliminary Visualisation of Data, [github::ropensci/visdat] v0.6.0.9000 
+```
+
+```{r}
+#| label = "style settings",
+#| echo = F,
+#| message = F,
+#| warning = F,
+#| results = "asis",
+#| cache = T
+options(width = 90, knitr.table.format = "html") 
+knitr::opts_chunk$set(
+  warning = FALSE,
+  message = FALSE,
+  cache = TRUE,
+  #dev = "ragg_png",
+  #fig.ext = "png",
+  dev = c("svglite", "ragg_png"),
+  dev.args = list(svglite = list(bg = 'white', fix_text_size = FALSE), ragg_png = list(bg = 'white')),
+  dpi = 300,
+  cache.path = "02_Decontamination_cache/",
+  fig.path = "02_Decontamination_figures/"
+)
+f_name <- "DejaVu Sans" #sub("\\s//", "", f_name)
+f_size <- 14
+font_import(pattern = "DejaVuSans\\.", prompt = FALSE)
+loadfonts() # registers fonts
+theme_set(theme_bw(base_size = f_size, base_family = f_name))
+```
+
+```{r}
+#| label = "functions",
+#| include = F
+phyloseq_merge_samples <- function(ps = Ps_obj, grouping_name = "Identifier", fun = "mean") {
+  require(dplyr)
+  require(purrr)
+  require(phyloseq)
+  require(speedyseq)
+
+  if (taxa_are_rows(ps)) {ps <- t(ps)} # needs to be in sample-by-species orientation
+  SD2merge <- get_variable(ps) # grab sample_data
+  org_col_names <- colnames(SD2merge) # retain original sample_data variable order
+  grouping_col <- select(SD2merge, group = all_of(grouping_name)) # grab grouping var
+  # grab factor variables
+  SD2merge %>%
+    select_if(is.factor) %>%
+    colnames() ->
+    fct_vars
+
+  SD2merge %>%
+    select_if(is.logical) %>%
+    colnames() ->
+    lgl_vars
+    
+  # merge the OTU table
+  ps %>%
+    otu_table() %>%
+    as(., "matrix") %>%
+    rowsum(., as_vector(grouping_col)) %>%
+    # convert back to otu_table, and return
+    otu_table(., taxa_are_rows = FALSE) ->
+    merged_OTU_table
+
+  # ps %>% # generalised form but very slow
+  #   otu_table() %>%
+  #   as(., "matrix") %>%
+  #   as.tibble() %>%
+  #   group_by(as_vector(grouping_col)) %>%
+  #   summarise_all(., fun)
+
+  # merge numeric
+  SD2merge %>%
+    select_if(is.numeric) %>%
+    bind_cols(grouping_col, .) %>%
+    group_by(group) %>%
+    summarise_all(., fun, na.rm = TRUE) ->
+    numeric_cols
+
+  # merge other
+  SD2merge %>%
+    select_if(negate(is.numeric)) %>%
+    bind_cols(grouping_col, .) %>%
+    group_by(group) %>%
+    summarise_all(list(~paste(unique(.), collapse = ",")))  ->
+    other_cols
+
+  # join merged numeric and other columns
+  full_join(numeric_cols, other_cols, by = "group") %>%
+    select(-group) %>%
+    select(all_of(org_col_names)) %>% # order columns like they were
+    mutate(across(fct_vars, ~factor(.))) %>% # return factor type to fct vars
+    mutate(across(lgl_vars, ~as.logical(.)))  %>% # return logical type to lgl vars
+    mutate(torownames = !!sym(grouping_name)) %>% 
+    column_to_rownames(var = "torownames") ->
+    merged_SD
+
+  ps_merged <- phyloseq(otu_table(t(merged_OTU_table), taxa_are_rows = TRUE),
+                        speedyseq::sample_data(merged_SD),
+                        tax_table(ps),
+                        refseq(ps))
+  # build and return a phyloseq object
+  return(ps_merged)
+}
+```
+
+
+## Identify and remove contaminant ASVs
+
+Decontamination of sequence library based on [Introduction to decontam](https://benjjneb.github.io/decontam/vignettes/decontam_intro.html) and Davis and colleagues [-@davis_simple_2018]. Decontamination is based on correlating sequence abundance frequencies to initial DNA concentrations used for PCR and also on examining sequence abundance prevalence patterns in the negative control samples.
+
+### Setting general parameters:
+
+
+```{r}
+#| label = "general parameters",
+#| cache = T
+set.seed(1000)
+data_path <- "./34_DADA2_pseudo/"
+Metadata_table <- "./34_Millipedes_SIP_metadata.csv"
+Seq_table <- "DADA2_seqtab_nochim.tsv"
+Tax_table <- "DADA2_taxa_silva.tsv"
+Seq_file <- "DADA2_reps.fa"
+Ps_file <- "DADA2_seqtab_nochim.RDS"
+Proj_name <- "Millipedes_SIP"
+Var1 = "Fraction.no." # e.g sampling point / replicate
+Var2 = "Day" # e.g. a treatment or a manipulation
+Var3 = "Species" # e.g. a treatment/manipulation or an important covariant
+Var4 = "Label (13C)" # e.g. an important covariant
+```
+
+
+### Reading in raw data and generate phyloseq object
+
+
+```{r}
+#| label = "load data",
+#| cache = T
+# read OTU mat from data file
+read_tsv(paste0(data_path, Seq_table),
+         trim_ws = TRUE) %>% 
+  rename_with(., ~ str_remove(.x, "_L001")) %>% 
+  identity() ->
+  abundance_mat # in tibble format
+
+# get short names of samples
+# abundance_mat %>% 
+#   rownames() %>% 
+#   str_remove("^Roey[0-9]{3,}-?") %>% 
+#   str_split("_", simplify = T) %>% 
+#   .[, 1] ->
+#   short_names
+
+# Read metadata file
+read_delim(Metadata_table,
+           delim = ",",
+           trim_ws = TRUE) %>% 
+  mutate(`16S_copies (undiluted RNA)` = replace(`16S_copies (undiluted RNA)`, which(`16S_copies (undiluted RNA)` == 0 | is.na(`16S_copies (undiluted RNA)`)), 1)) %>% # add pseudo count
+  filter(str_remove(Read1_file, "_L001_R1_001_noPrimers.fastq.gz") %in% colnames(abundance_mat)) %>% # remove metadata rows if the samples did not go through qual processing
+  mutate(to_names = str_remove(Read1_file, "_L001_R1_001_noPrimers.fastq.gz"), .before = 1) %>% 
+  # mutate(across(c(!!sym(Var2), 
+  #                 !!sym(Var3),
+  #                 !!sym(Var4)), ~factor(.))) %>% # you might want to wait with that until filtering of taxa and samples in 03_Taxonomical_analysis.Qmd
+  mutate(`Density zone` = factor(ifelse(`Density (g ml-1)` > 1.795, "Heavy", "Light"), levels = c("Light", "Heavy"))) %>% # critical for DESeq2 that the reference is the first level
+  identity() ->
+  Metadata
+
+# Order abundance_mat samples according to the metadata
+sample_order <- match(Metadata$to_names, str_remove(colnames(select(abundance_mat, -ASV)), "_L001"))
+abundance_mat %<>% select(c(1, sample_order + 1))
+Metadata %<>% mutate(`Library size` = colSums(select(abundance_mat, -ASV)))  # Add lib size
+
+# read taxonomy from data file
+Raw_tax_data <- read_tsv(paste0(data_path, Tax_table), 
+                        trim_ws = TRUE, col_names = TRUE)
+Raw_tax_data %<>%
+  replace(., is.na(.), "Unclassified") 
+
+# Potentially store tax classification BS values
+# Raw_tax_data %>%
+#   dplyr::select(.,
+#          `Kingdom (BS)`,
+#          `Phylum (BS)`,
+#          `Class (BS)`,
+#          `Order (BS)`,
+#          `Family (BS)`,
+#          `Genus (BS)`) %>%
+#   cbind(Name = colnames(abundance_mat),. ) ->
+#   Taxonomy.bs
+
+# merge it downstream with the PS object
+# taxTraits <- tax_table(cbind(tax_table(Ps_obj_merged), taxTraits))
+# Ps_obj <- merge_phyloseq(Ps_obj, taxTraits)
+# Taxonomy.bs %<>% 
+#   filter(Taxonomy.bs$Name %in% row.names(Ps_obj_filt@tax_table))
+
+Raw_tax_data %>%
+  dplyr::select(.,
+         Kingdom,
+         Phylum,
+         Class,
+         Order,
+         Family,
+         Genus) %>% 
+  # map_dfr(., as_factor) %>% 
+  # map_dfr(fct_expand, "Rare")  %>%  
+  mutate(to_names = abundance_mat$ASV, .before = 1)-> # must be a matrix or phyloseq drops row names and gives and error
+  Taxonomy
+# row.names(Taxonomy) <- colnames(abundance_mat)
+# colnames(Taxonomy) <-
+#   c("Domain", "Phylum", "Class", "Order", "Family", "Genus")
+
+# read sequence data
+ASV_seqs <- readDNAStringSet(
+  file = paste0(data_path, Seq_file),
+  format = "fasta", 
+  nrec = -1L, 
+  skip = 0L, 
+  seek.first.rec = FALSE,
+  use.names = TRUE)
+
+# generate phyloseq object. **Note: only speedyseq allows constructing phyloseq from tibble!**
+Ps_obj <- phyloseq(otu_table(abundance_mat, taxa_are_rows = TRUE),
+                   sample_data(Metadata),
+                   tax_table(Taxonomy),
+                   refseq(ASV_seqs))
+# rename_with_sample_data(Ps_obj, colnames(select(Metadata, -to_names)))
+
+# merge samples in case the company re-sequenced some samples. **Note! Don't use it now to merge real DNA samples. Instead, do it downstream in one of the next scripts.**
+Ps_obj %>% 
+  phyloseq_merge_samples("sample_ID", fun = "sum") %>%
+  filter_taxa(., function(x) sum(x) > 0, TRUE) ->
+  Ps_obj_merged 
+```
+
+
+### Inspect library sizes
+
+
+```{r}
+#| label = "Library Sizes",
+#| cache = T
+Ps_obj_df <- as_tibble(sample_data(Ps_obj_merged)) # Put sample_data into a ggplot-friendly data.frame
+Ps_obj_df <- Ps_obj_df[order(pull(Ps_obj_df, Library.size)), ]
+Ps_obj_df$Index <- seq(nrow(Ps_obj_df))
+ggplot(data = Ps_obj_df, 
+       aes(x = Index, y = Library.size, color = Control)) + 
+  geom_point() +
+  scale_y_log10(breaks = c(
+    min((pull(Ps_obj_df, Library.size))),
+    10,
+    100,
+    1000,
+    5000,
+    10000,
+    ceiling(max((pull(Ps_obj_df, Library.size))) / 10000) * 10000
+    )) + 
+  scale_color_brewer(type = 'qual', 
+                     palette = 'Set1', 
+                     direction = -1)
+summary(sample_sums(Ps_obj_merged))
+summary(taxa_sums(Ps_obj_merged))
+```
+
+```{r}
+#| label = "remove 0-abundance samples",
+#| cache = T
+Ps_obj_merged %<>%
+  prune_samples(names(which(sample_sums(Ps_obj_merged) != 0)), .)
+```
+
+
+### Inspect metadata
+
+
+```{r}
+#| label = "overview",
+#| cache = T
+Ps_obj_merged %>% 
+  get_variable() %>% 
+  vis_dat()
+
+Ps_obj_merged %>% 
+  get_variable() %>% 
+  select_if(is.numeric) %>% 
+  modify(., ~log(.x)) %>% 
+  vis_value()
+
+Ps_obj_merged %>% 
+  get_variable() %>% 
+  select_if(is.numeric) %>% 
+  vis_cor()
+```
+
+
+### Identify contaminants - Frequency
+
+Use the distribution of the frequency of each sequence feature as a function of the input DNA concentration to identify contaminants.
+
+
+```{r}
+#| label = "frequency",
+#| cache = T
+contamdf_freq <-
+  isContaminant(Ps_obj_merged, method = "frequency", conc = "X16S_copies..undiluted.RNA.")
+# print(contamdf_freq)
+# How many contaminants are found?
+table(contamdf_freq$contaminant)
+# Which ones
+which(contamdf_freq$contaminant)
+```
+
+
+Plot the frequency of sequence 1 and 3 (non-contaminants) against the DNA concentration, as an example.
+
+
+```{r}
+#| label = "plot frequency 1",
+#| cache = T
+plot_frequency(Ps_obj_merged, taxa_names(Ps_obj_merged)[c(1, 3)], conc = "X16S_copies..undiluted.RNA.")
+```
+
+
+Plot the frequency of the contaminant sequences against the DNA concentration.
+
+
+```{r}
+#| label = "plot frequency 2",
+#| cache = T,
+#| fig.height = 20,
+#| fig.width = 20
+plot_frequency(Ps_obj_merged, taxa_names(Ps_obj_merged)[which(contamdf_freq$contaminant)[1:20]], conc = "X16S_copies..undiluted.RNA.")
+```
+
+
+The frequency analysis detected $`r sum(contamdf_freq$contaminant)`$ sequences as contaminants.
+
+### Identify contaminants - Prevalence
+
+Use the prevalence of sequences found in the control samples (no-template controls) to identify contaminants.
+
+
+```{r}
+#| label = "prevalence",
+#| cache = T
+contamdf_prev <- isContaminant(Ps_obj_merged, method = "prevalence", neg = "Control")
+# How many contaminants are found?
+table(contamdf_prev$contaminant)
+# Which ones
+which(contamdf_prev$contaminant)
+
+# And using a more aggressive threshold
+contamdf_prev05 <- isContaminant(Ps_obj_merged, method = "prevalence", neg = "Control", threshold = 0.5)
+table(contamdf_prev05$contaminant)
+
+# Make phyloseq object of presence-absence in negative controls
+Ps_obj_pa <-
+  transform_sample_counts(Ps_obj_merged, function(abund)
+    1 * (abund > 0))
+Ps_obj_pa_neg <-
+  prune_samples(sample_data(Ps_obj_pa)$Control == "TRUE", Ps_obj_pa)
+Ps_obj_pa_pos <-
+  prune_samples(sample_data(Ps_obj_pa)$Control == "FALSE", Ps_obj_pa)
+# Make data.frame of prevalence in positive and negative samples
+df_pa <-
+  data.frame(
+    pa_pos = taxa_sums(Ps_obj_pa_pos),
+    pa_neg = taxa_sums(Ps_obj_pa_neg),
+    contaminant = contamdf_prev$contaminant
+  )
+ggplot(data = df_pa, aes(x = pa_neg, y = pa_pos, color = contaminant)) + geom_point() +
+  xlab("Prevalence (Negative Controls)") + ylab("Prevalence (True Samples)")
+```
+
+
+The frequency analysis detected $`r sum(contamdf_prev$contaminant)`$ sequences as contaminants. In total $`r sum(contamdf_freq$contaminant) + sum(contamdf_prev$contaminant)`$ were detected as contaminants.
+However, I won't drop the 'frequency' contaminants because these could come from an inverse correlation of labelled ASVs with RNA conc.
+
+### Save contaminant sequence names and decontaminated data
+
+
+```{r}
+#| label = "save",
+#| cache = T
+c(#taxa_names(Ps_obj_merged)[which(contamdf_freq$contaminant)],
+  taxa_names(Ps_obj_merged)[which(contamdf_prev$contaminant)]) ->
+  contaminant_seqs
+  
+write_csv(as_tibble(contaminant_seqs), 
+            paste0(data_path, "decontam_contaminants.csv"), 
+            col_names = FALSE)
+
+
+good_seqs <- setdiff(taxa_names(Ps_obj_merged), contaminant_seqs)
+Ps_obj_clean <- prune_taxa(good_seqs, Ps_obj_merged)
+
+# save decontaminated seqtab
+Ps_obj_clean %>% 
+  # t() %>%
+  get_taxa() %>% 
+  as_tibble(rownames = "ASV") %>%
+  write_tsv(., 
+            paste0(data_path, str_remove(Seq_table, ".tsv"), "_decontam.tsv"), 
+            col_names = TRUE)
+
+Ps_obj_clean %>% 
+  t() %>% 
+  tax_table() %>% 
+  as_tibble() %>%
+  rename(.otu = "ASV") %>% 
+  write_tsv(., 
+            paste0(data_path, str_remove(Tax_table, ".tsv"), "_decontam.tsv"), 
+            col_names = TRUE)
+
+# save decontaminated metadata (just in case some samples were dropped)
+Ps_obj_clean %>% 
+  t() %>%
+  sample_data() %>% 
+  # setNames(., colnames(Metadata)) %>% 
+  # as_tibble(rownames = "ASV") %>%
+  write_csv(., 
+            paste0("./", str_remove(Metadata_table, ".csv"), "_decontam.csv"), 
+            col_names = TRUE)
+
+# save decontaminated seqs
+Ps_obj_clean %>% 
+  refseq() %>% 
+  writeXStringSet(., filepath = paste0(data_path, "DADA2_reps_decontam.fa"), format = "fasta", width = 1000)
+ 
+# save R obj **saving taxa as columns!**
+saveRDS(t(Ps_obj_clean), file = paste0(data_path, Proj_name, "_decontam.Rds"))
+```
+
+```{r}
+#| label = "colophon",
+#| eval = T
+sessioninfo::session_info() %>%
+  details::details(
+    summary = 'Current session info',
+    open    = TRUE
+  )
+```
+
+
+## References
+

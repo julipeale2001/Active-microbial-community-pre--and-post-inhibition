@@ -1,0 +1,426 @@
+---
+title: "Amplicon Sequence Analyses after Antibiotic Treatment"
+subtitle: "Hindgut and Faecal ANCOM-BC2 Analysis"
+author: "Julius Nweze"
+date: "`r Sys.Date()`"
+output:
+  rmarkdown::html_document:
+    toc: true
+    toc_float: true
+    toc_depth: 5
+    keep_md: true
+    number_sections: false
+    highlight: "pygments"
+    theme: "flatly"
+    dev: "png"
+    df_print: "kable"
+    fig_caption: true
+    code_folding: "show"
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r libraries, include=F}
+# Load libraries
+#.libPaths(c('~/R/library', .libPaths())) # Uncomment if you have no write access to R path
+
+repo <- "http://cran.wu.ac.at"
+lib.loc <- Sys.getenv("R_LIBS_USER")
+
+update.packages(
+    lib.loc, 
+    repos = repo,
+    ask = FALSE
+)
+
+.cran_libs <- c(
+  "phyloseq", # a set of classes and tools to facilitate the import, storage, analysis, and graphical display of microbiome census data
+  "rmarkdown", # Dynamic Documents for R
+  "knitr",  # A General-Purpose Package for Dynamic Report Generation in R
+  "extrafont", # for extra figure fonts
+  "phyloseq.extended", # Various customs functions written to enhance the base functions of phyloseq
+  "dplyr",  # filter and reformat data frames
+  "gridExtra", # To arrange multiple grid-based plots on a page, and draw tables.
+  "knitr", # A General-Purpose Package for Dynamic Report Generation in R
+  "kableExtra", # Construct Complex Table with 'kable' and Pipe Syntax
+  "rmarkdown", # Dynamic Documents for R
+  "extrafont", # for extra figure fonts
+  "tidyverse", # for dplyr forcats ggplot2 readr tibble
+  "grid", # The Grid Graphics Package
+  "magrittr", # pipes
+  "scales", # Generic plot scaling methods
+  "svglite", # for svg files
+  "vegan",  # Ordination methods, diversity analysis and other functions for community and vegetation ecologists
+  "car", # Companion to Applied Regression
+  "rcompanion", #Functions to Support Extension Education Program Evaluation
+  "multcomp", # Simultaneous Inference in General Parametric Models 
+  "nlme", # Fit Linear Model Using Generalized Least Squares
+  "ggResidpanel", # Panels and Interactive Versions of Diagnostic Plots using 
+  "lsmeans", # Least-Squares Means
+  "ggplot2",      # graphics
+  "tidyr", # necessary to import the data from Excel file
+  "phyloseqGraphTest", # Provides functions for graph-based multiple-sample testing and visualization of microbiome data
+  "shiny", # makes it easy to build interactive web apps straight from R
+  "miniUI", # Designed to work especially well for creating Shiny Gadgets
+  "caret", # Classification And REgression Training is a set of functions that attempt to streamline the process for creating predictive models
+  "pls", # Partial Least Squares and Principal Component Regression
+  "e1071", # Functions for latent class analysis, short time Fourier transform, fuzzy clustering, support vector machines
+  "randomForest",
+  "ggrepel",
+  "dunn.test",
+  "reshape2",
+  "readODS",
+  "devtools",
+  "micro4all",
+  "PMA", 
+    # "structSSI",  
+  "ade4",
+  "igraph", 
+  "ggnetwork", 
+  "intergraph",
+  "DT", 
+  "scales",
+  "mia",
+  "microbiome",
+  "ggpubr",
+  "RColorBrewer",
+  "microbiomeutilities",
+  "viridis",
+  "tibble",
+  "ANCOMBC",
+  "cowplot",
+  "userfriendlyscience",
+# "agricolae", # Statistical Procedures for Agricultural Research
+ # "doParallel", # parallel backend for the foreach/%dopar% function
+ "BiodiversityR", # Package for Community Ecology and Suitability Analysis
+ # "hexbin", # Hexagonal Binning Routines
+ # "ggtern", # An Extension to 'ggplot2', for the Creation of Ternary Diagrams
+#  "MuMIn" # Multi-Model Inference
+  #"stringr",
+ # "mctoolsr"
+"AnnotationDbi", 
+"DESeq2", 
+"GO.db", 
+"impute", 
+"preprocessCore",
+"adespatial"
+) 
+
+.inst <- .cran_libs %in% installed.packages()
+if (any(!.inst)) {
+   install.packages(.cran_libs[!.inst],
+                    repos = repo,
+                    lib = lib.loc)
+}
+
+.bioc_libs <- c(
+  #"multtest", #Resampling-based multiple hypothesis testing
+)
+
+.bioc_inst <- .bioc_libs %in% installed.packages()
+if (any(!.bioc_inst)) {
+   if (!requireNamespace("BiocManager", quietly = TRUE))
+   install.packages("BiocManager")
+   BiocManager::install(ask = F, lib = lib.loc)  # upgrade bioC packages
+   BiocManager::install(.bioc_libs[!.bioc_inst], ask = F, lib = lib.loc)
+}
+
+.local_libs <- c()
+
+.inst <- names(.local_libs) %in% installed.packages()
+if (any(!.inst)) {
+   install.packages(paste0("~/R/", .local_libs[!.inst]) ,repos = NULL, type = "source", lib = lib.loc)
+}
+
+.github_libs <- c()
+
+.github_lib_names <- stringr::str_replace(.github_libs, ".*/(.*)$", "\\1")
+
+.github_inst <- .github_lib_names %in% installed.packages()
+if (any(!.github_inst)) {
+  devtools::install_github(.github_libs[!.github_inst],
+                           lib = lib.loc,
+                           dependencies = TRUE)
+}
+
+
+# Load packages into session, and print package version
+(loaded.libs <- sapply(c(.cran_libs, .bioc_libs, names(.local_libs), .github_lib_names), require, character.only = TRUE))
+if (!all(loaded.libs)) {stop(paste("Package(s):", names(loaded.libs[loaded.libs == FALSE]), "could not be loaded"))}
+sapply(c(.cran_libs, .bioc_libs, names(.local_libs), .github_lib_names), packageVersion)
+set.seed(123456789)
+bootstraps <- 1000
+min_lib_size <- 1000
+```
+
+
+```{r style settings, include=F}
+graphic_device <- "svglite"
+options(width = 90, knitr.table.format = "html") 
+opts_chunk$set(
+  warning = FALSE,
+  message = FALSE,
+  cache = TRUE,
+  dev = graphic_device,
+  fig.ext = "svg",
+  #  fig.width=12,
+  #  fig.height=8,
+  cache.path = "Antibiotics_Sequence_cache/",
+  fig.path = "Antibiotics_Sequence_figures/"
+)
+
+f_name <- "DejaVu Sans" #sub("\\s//", "", f_name)
+f_size <- 12
+font_import(pattern = "DejaVuSans", prompt = FALSE)
+loadfonts() # registers fonts
+theme_set(theme_bw(base_size = f_size, base_family = f_name))
+pom4 <- ggpomological:::pomological_palette[c(2, 1, 9, 3)]
+pom2 <- c(ggpomological:::pomological_base[[7]], ggpomological:::pomological_palette[[1]])
+```
+
+```{r functions, include=F}
+#' Filter ASVs by Count and Presence in a Phyloseq Object
+#' Filter ASVs by count number and presence in a phyloseq object based on specified thresholds.
+#'
+#' @param physeq A phyloseq object that has sample indices.
+#'
+#' @param abund_thresh The abundance threshold for filtering ASVs. ASVs with counts below this threshold will be removed.
+#'
+#' @param prev_thresh The prevalence threshold for filtering ASVs. ASVs must be present in at least this many samples to be retained.
+#'
+#' @param var2split A single character string matching a variable name in the corresponding sample_data of `physeq`.
+#'                  If provided, ASVs will be filtered separately for each level of the specified variable.
+#'                  Default: ""
+#'
+#' @return A filtered phyloseq object with ASVs meeting the specified abundance and prevalence thresholds.
+#'
+#' @author Roey Angel (https://github.com/roey-angel)
+#'
+#' @usage filter_ASVs_by_prevalence(physeq, abund_thresh = 10, prev_thresh = 6, var2split = "")
+#'
+#' @seealso \code{\link{filter_taxa_by_prevalence}}
+#'
+#' @export
+#' 
+filter_ASVs_by_prevalence <- function (ps_obj, abund_thresh = 10, prev_thresh = 6, var2split = "") {
+  # Filter ASVs by count number and presence in a phyloseq object
+  # var2split <<- vars2test 
+  trans <- FALSE
+  if(taxa_are_rows(ps_obj)) {
+    trans <- TRUE
+    ps_obj <- t(ps_obj)}
+  
+  if(!is.na(var2split) & var2split != "") {
+    split_levels <- as.character(unique(get_variable(ps_obj, var2split)))
+
+    keep <- taxa_names(ps_obj) %in% taxa_names(ps_obj)
+    names(keep) <- taxa_names(ps_obj)
+    for (split_level in split_levels){
+      split_ps <- ps_obj
+      # split_ps <- subset_samples(ps_obj, get(var2split) == split_level) # Indirection is needed here (NSE) but phyloseq is too shitty to accept it!!
+      oldDF <- as(sample_data(ps_obj), "data.frame")
+      newDF <- subset(oldDF, get({{var2split}}) == split_level) 
+      sample_data(split_ps) <- sample_data(newDF)
+      otu_tab <- as(otu_table(split_ps), "matrix")
+      keep <- keep & (colSums(otu_tab >= abund_thresh) >= prev_thresh)
+      #print(keep)
+    }
+
+  } else {
+    otu_tab <- as(otu_table(ps_obj), "matrix")
+    keep <- colSums(otu_tab >= abund_thresh) >= prev_thresh
+    #print(keep)
+  }
+  
+  otu_tab <- as(otu_table(ps_obj), "matrix")
+  otu_tab <- otu_tab[, keep]
+  otu_table(ps_obj) <- otu_table(otu_tab, taxa_are_rows = FALSE)
+  if(trans) {ps_obj <- t(ps_obj)}
+  return(ps_obj)
+}
+
+```
+
+
+## **Read the data and create both Epibolus (hindgut and faecal) phyloseq objects**
+```{r load amplicon seq data, cache = T}
+tsv_table <- read.table("16_DADA2.seqtab_nochim_decontam.tsv", sep = ",", header = TRUE, quote = "", comment.char = "", stringsAsFactors = FALSE, check.names = FALSE)
+tax_table <- read.table("16_DADA2.taxa_silva_decontam.tsv", sep = ",", header = TRUE, quote = "", comment.char = "", stringsAsFactors = FALSE, check.names = FALSE)
+sample_table <- read.csv("16_Metadata.csv", sep = ",", header = TRUE, check.names = FALSE)
+```
+
+
+##*Phyloseq objects need to have row.names*
+```{r adding row.names to data, cache = T}
+
+# Define the row names from the ASV column
+row.names(tsv_table) <- tsv_table$ASV
+ tsv_table <- tsv_table %>% dplyr::select(-c(ASV, MC1_S96, BC1_S103, NC1_S110, MC2_S123, BC2_S130, NC2_S137)) 
+
+
+row.names(tax_table) <- tax_table$ASV
+tax_table <- tax_table %>% dplyr::select(-ASV)
+  
+row.names(sample_table) <- sample_table$Sample
+sample_table <- sample_table[!(sample_table$Sample=="MC1_S96" | sample_table$Sample=="BC1_S103" | sample_table$Sample=="NC1_S110" | sample_table$Sample=="MC2_S123" | sample_table$Sample=="BC2_S130" | sample_table$Sample=="NC2_S137"),]
+sample_table <- sample_table %>% dplyr::select(-Sample)
+```
+
+
+*Transform into matrixes tsv and tax tables (sample table can be left as data frame)*
+```{r transformation of data to matrices, cache = T} 
+
+tsv_table <- as.matrix(tsv_table)
+tax_table <- as.matrix(tax_table)
+```
+
+
+
+*Transform to phyloseq objects*
+```{r pyloseq object, cache = T}
+
+
+OTU <- otu_table(tsv_table, taxa_are_rows = TRUE)
+TAX = tax_table(tax_table)
+sample = sample_data(sample_table)
+
+carbom <- merge_phyloseq(sample, OTU, TAX)
+carbom
+
+
+
+
+# Visualize data
+
+sample_names(carbom)
+
+rank_names(carbom)
+
+sample_variables(carbom)
+
+
+summarize_phyloseq(carbom)
+```
+
+
+# Faeces from Glomeris connexa
+
+*Group according to sample sources (Epibolus faecal pellets)*
+```{r group according to sample sources, cache = T}
+# Epibolus faecal pellets
+Epi_faecal <- subset_samples(carbom, sample_names(carbom) =="Fp-E1G_S117" | sample_names(carbom) == "Fp-E1H_S118" | sample_names(carbom) == "Fp-E1J_S119" | sample_names(carbom) == "Fp-E2A_S120" | sample_names(carbom) == "Fp-E2D_S121" | sample_names(carbom) == "Fp-E2H_S122" | sample_names(carbom) == "Fp-E3B_S124" | sample_names(carbom) == "Fp-E3E_S125" | sample_names(carbom) == "Fp-E3J_S126" | sample_names(carbom) == "Fp-E4C_S127" | sample_names(carbom) == "Fp-E4B_S128" | sample_names(carbom) == "Fp-E4E_S129")
+Epi_faecal
+
+# Phyloseq object Summary
+summarize_phyloseq(Epi_faecal)
+```
+
+
+##**Faeces: Analysis of Compositions of Microbiomes with Bias Correction (ANCOM-BC)**
+```{r Epibolus Hindgut ANCOMBC, cache = T}
+# For faeces
+Epi_faecal_sub <- filter_ASVs_by_prevalence(ps_obj = Epi_faecal, 
+                                             abund_thresh = 2, 
+                                             prev_thresh = 2)
+
+sample_data(Epi_faecal_sub)$Treatment <- as.factor(sample_data(Epi_faecal_sub)$Treatment)
+
+sample_data(Epi_faecal_sub)$Treatment <- factor(sample_data(Epi_faecal_sub)$Treatment, levels = c("Control", "Sterile feed", "Antibiotics (2X)", "Antibiotics (1X)"))
+
+
+# Coerce a phyloseq object to a TreeSummarizedExperiment
+tse_Epi_faecal_sub <- makeTreeSummarizedExperimentFromPhyloseq(Epi_faecal_sub)
+
+# Access the metadata slot of the TreeSummarizedExperiment
+tse_metadata <- colData(tse_Epi_faecal_sub)
+
+# Update the levels of the Treatment factor in the metadata
+tse_metadata$Treatment <- factor(tse_metadata$Treatment,
+                                 levels = c("Control", "Sterile feed", "Antibiotics (2X)", "Antibiotics (1X)"))
+
+# Update the metadata in the TreeSummarizedExperiment
+colData(tse_Epi_faecal_sub) <- tse_metadata
+
+# You can verify the change by checking:
+levels(tse_metadata$Treatment)
+
+# Run ANCOM-BC at the genus level and only including the prevalent genera
+Epi_faecal_sub_ancombc2 <- ancombc2(data = tse_Epi_faecal_sub,
+                tax_level = "Genus",
+                assay_name = "counts",
+                fix_formula = "Treatment",
+                p_adj_method = "fdr",
+                # prv_cut = 0.1,
+                # lib_cut = 1000, 
+                s0_perc = 0.05,
+                group = "Treatment",
+                struc_zero = TRUE,
+                neg_lb = TRUE,
+                n_cl = 10,
+                pairwise = TRUE,
+                global = TRUE,
+                # iter_control = list(tol = 1e-5, max_iter = 20, 
+                # verbose = FALSE),
+                # em_control = list(tol = 1e-5, max_iter = 100),
+                # lme_control = NULL, 
+                # mdfdr_control = list(fwer_ctrl_method = "holm", B = 100), 
+                # trend_control = NULL
+                )
+
+saveRDS(Epi_faecal_sub_ancombc2, "RDS/Epi_faecal_sub_ancombc2.Rds")
+
+Epi_faecal_sub_ancombc2 <- readRDS("RDS/Epi_faecal_sub_ancombc2.Rds")
+
+
+
+
+res_prim = Epi_faecal_sub_ancombc2$res
+
+# # Save
+write_csv(res_prim, "ANCOM_BC_Table/Epi_faecal_sub_ancombc2.csv")
+
+
+########################################################## ANCOM-BC2 global test ################################################################
+
+res_global = Epi_faecal_sub_ancombc2$res_global
+
+write_csv(res_global, "ANCOM_BC_Table/Epi_faecal_sub_ancombc2_global.csv")
+
+df_Treatment = res_prim %>%
+    dplyr::select(taxon, contains("Treatment")) 
+df_fig_global = df_Treatment %>%
+    dplyr::left_join(res_global %>%
+                       dplyr::transmute(taxon, 
+                                        diff_Treatment = diff_abn, 
+                                        passed_ss = passed_ss)) %>%
+    dplyr::filter(diff_Treatment == 1, passed_ss == 1) %>%
+    dplyr::mutate(`lfc_Sterile feed` = `lfc_TreatmentSterile feed`,
+                  `lfc_Antibiotics (2X)` = `lfc_TreatmentAntibiotics (2X)`,
+                  `lfc_Antibiotics (1X)` = `lfc_TreatmentAntibiotics (1X)`) %>%
+    dplyr::transmute(taxon, 
+                     `Sterile feed vs. Control` = round(`lfc_Sterile feed`, 2), 
+                     `Antibiotics (2X) vs. Control` = round(`lfc_Antibiotics (2X)`, 2),
+                     `Antibiotics (1X) vs. Control` = round(`lfc_Antibiotics (1X)`, 2)) %>%
+    tidyr::pivot_longer(cols = `Sterile feed vs. Control`:`Antibiotics (2X) vs. Control`:`Antibiotics (1X) vs. Control`, 
+                        names_to = "group", values_to = "value") %>%
+    dplyr::arrange(taxon)
+  
+lo = floor(min(df_fig_global$value))
+up = ceiling(max(df_fig_global$value))
+mid = (lo + up)/2
+fig_global = df_fig_global %>%
+  ggplot(aes(x = group, y = taxon, fill = value)) + 
+  geom_tile(color = "black") +
+  scale_fill_gradient2(low = "blue", high = "red", mid = "white", 
+                       na.value = "white", midpoint = mid, limit = c(lo, up),
+                       name = NULL) +
+  geom_text(aes(group, taxon, label = value), color = "black", size = 4) +
+  labs(x = NULL, y = NULL, title = "Log fold changes for globally significant taxa") +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5))
+fig_global
+
+ggsave("ANCOM_BC_Fig/Epi_faecal_sub_ANCOM-BC2.svg",width = 40, height = 40, units = "cm")
+```
+
+
