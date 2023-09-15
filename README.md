@@ -2,6 +2,7 @@
 For analysis of microbial community from the hindguts and faeces of E. pulchripes and G. connexa after antibiotics and 2-bromo-ethane-sulfate treatments. It involves analysing the weight of millipedes, faecal counts, bacterial total colony counts, 16S rRNA copy number, methane production after antibiotics treatment, 16S rRNA sequence, mcrA copy and RNA-SIP.
 
 
+![Uploading image.png…]()
 1_Epibolus_pulchripes_weight_loss_analysis.Rmd
 
 
