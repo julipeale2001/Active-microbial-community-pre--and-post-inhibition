@@ -434,9 +434,10 @@ ggplot(Glomeris_total_colony_counts_mean, aes(x = Day, y = `Mean total colonies`
   geom_line(aes(colour = Treatment)) +
   labs(y = "Mean total colonies") +  # Corrected y-axis label
   scale_colour_manual(values = pom4, name = "") +
-  scale_fill_manual(values = pom4, name = "") +
-  scale_y_continuous(label = scientific_format(scale = 10))  # Use `scientific_format` from scales package
+  scale_fill_manual(values = pom4, name = "") +  
+  scale_y_continuous(label = scientific_format(scale = 10), limits = c(-0.2e06, 0.6e6), breaks = seq(-0.2e06, 0.6e6, by = 0.2e6))  # Use `scientific_format` from scales package
 
+#, expand = c(1e-6, 1e6)
 ```
 
 ```{r table mean+SE weights 2, cache=TRUE}
@@ -444,12 +445,109 @@ Glomeris_colony_counts_mean %>% # output a table of group means
   kable(., digits = c(0, 1, 1, 1, 0, 1)) %>%
   kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"), full_width = F)
 ```
+
+
+
+**Fit a linear mixed-effects model**
+```{r Glomeris_colony_counts mixed-effects model analysis}
+Glomeris_colony_counts %>% 
+  drop_na() %>% # drop missing entries
+  rename(Tcolonies = `Total colonies`) %>%
+  mutate(Tcolonies_log = log10(Tcolonies)) -> # rename column 
+ Glomeris_Tcolonies4model # data frame for modeling
+
+# Testing differenly models
+model1 <- lme(Tcolonies_log ~ Treatment + Day + Treatment * Day, random = ~ 1 | Individual, data =Glomeris_Tcolonies4model)
+model2 <- lme(Tcolonies_log ~ Treatment + Day, random = ~ 1 | Individual, data =Glomeris_Tcolonies4model)
+model3 <- lme(Tcolonies_log ~ Treatment * Day, random = ~ 1 | Individual, data =Glomeris_Tcolonies4model)
+model4 <- lme(Tcolonies_log ~ Treatment + Day + Treatment * Day, random = ~ Day | Individual, data =Glomeris_Tcolonies4model)
+
+# Compare based on AIC
+anova(model1, model2, model3, model4) # model2 has the lowest
+
+
+summary(model3)
+
+model5 <- gls(Tcolonies_log ~ Treatment + Day + Treatment * Day, data =Glomeris_Tcolonies4model)
+model6 <- gls(Tcolonies_log ~ Treatment + Day, data =Glomeris_Tcolonies4model)
+
+anova(model5, model3)
+anova(model6, model3)
+
+model1 <- lme(Tcolonies_log ~ Treatment + Day + Treatment * Day, random = ~ 1 | Individual, data =Glomeris_Tcolonies4model)
+
+summary(model1)
+   
+anova(model1)
+
+report::report(model1)
+```
+
+
+**Plot diagnostic plots for the lme model**
+```{r Epibolus diag plots lme, cache=T}
+resid_panel(model1)
+
+# # We can see the QQ-plot:
+print(qqnorm(model1, abline = c(0, 1), pch = 16))
+
+# We saw 5 outliers. Let us identify these observations in out database. First, let us obtain the standardized residuals
+res=resid(model1, type="p")
+
+# Then we look for the observations with an absolute standardized residual greater than 2:
+which(abs(res) >2)
+
+
+# We see that there are, in fact, 14 observations that lead to extreme residuals. Actually, these observations come from the individuals labelled 23, 31, 34, 3, 29 and 40. Let us inspect the individual with
+# ID = 23:
+res[Epibolus_Tcolonies4model$Individual == 23]
+
+# 23         23         23         23         23         23         23 
+# 2.8382062 -1.8069709 -0.8794832 -0.7661836  0.3060486  0.2987277  0.1647554
+
+# Let us see these observations
+subset(Epibolus_Tcolonies4model, Individual == 23)
+
+# Code  Weight Treatment Replicate Date         Day Individual Status
+#  <fct>  <dbl> <fct>     <fct>     <date>     <dbl> <fct>       <dbl>
+# 1 3C      5.96 Undiluted 3         2019-11-05     0 23              0
+# 2 3C      5.14 Undiluted 3         1941-11-12     7 23              0
+# 3 3C      5.24 Undiluted 3         1941-11-19    14 23              0
+# 4 3C      5.21 Undiluted 3         1941-11-26    21 23              0
+# 5 3C      5.34 Undiluted 3         2019-12-03    28 23              0
+# 6 3C      5.28 Undiluted 3         2019-12-10    35 23              0
+# 7 3C      5.21 Undiluted 3         2019-12-17    42 23              0
+
+# The weight was decreasing and increasing on different days.
+# The weight was decreasing and increasing on different days. It  appears as an outlier in the residuals. The problem with outliers is that sometimes they have an important influence in the model estimates
+# We can check this by adjusting the model again, but excluding these individuals. If the two models give similar estimates, we will conclude that the outliers are simple anomalies in the model. If the two models give similar estimates, we will conclude that the outliers are simple anomalies in the model. However, if they give very different estimates, we would consider invalid the model with outliers.
+
+# Let us adjust the model again but excluding individuals 23, 31, 34, 3, 29 and 40:
+
+Epibolus_weights4model2 = subset(Epibolus_weights4model, Individual!=22 & Individual!=31 & Individual!=34 & Individual!=3 & Individual!=29 & Individual!=40)
+mod7 = lme(Weight ~ Day + Treatment+ Day*Treatment, dat = Epibolus_weights4model2, random=~ Day|Individual)
+summary(mod7)
+
+# The standard deviation estimate of the random effect is 1.22 and 0.0038, whereas in the model with the complete dataset (the best chosen model) it was 1.17 and 0.0035. Regarding the random error, now we have a standard deviation of 0.12 in this model, whereas in the preivous model (the best chosen model) it was 0.17. Thus, the change in these two variabilities is small. If we look at the fixed effects, we conclude that the estimates barely change from one model to another, and the interaction term is still statistically significant. In conclusion, the six animals affecting the residuals do not have an important impact in the model estimates so we decide to keep the first model.
+
+```
+
+
+
+
+
+
+
+
+
+
+
 #### Anova tests
 **Compare time 2 colony counts between groups**
 ```{r t0 colony counts aov 2, cache=T}
 Glomeris_colony_counts %>% 
   filter(., Day  == 2) %>% # select only day 0 entries 
-  aov(`Total colonies` ~ Treatment, .) -> # fit an anova model
+  aov(log(`Total colonies`) ~ Treatment, .) -> # fit an anova model
   aov_t2
   
 print(Anova(aov_t2)) # print results
@@ -468,17 +566,259 @@ PlotLmResid(mod_data_df) # plot residuals
 ```
 The ANOVA model indicates no significant different in the colony counts of the animals' faecal pellets at time 2
 
-**Post-hoc tests for time 0**
+**Post-hoc tests for time 2**
 ```{r t0 colony counts post-hoc 2, cache=T}
 TukeyHSD(aov_t2) # Compute Tukey Honest Significant Differences
 ```
 Also in the post-hoc tests shows no signififcant differences.
 
+```{r t2 colony counts aov, cache=T}
+# Building a regression model
+Glo_model1_d2 <- Glomeris_colony_counts %>% 
+  filter(., Day  == 2) %>% lm(`Total colonies` ~ Treatment, data = .)
+
+print(Anova(Glo_model1_d2, type = "III"))
+
+# checking model assumptions
+check_model(Glo_model1_d2)
+
+Glo_emm_mod1_d2 <- emmeans(Glo_model1_d2, as.formula(paste("", "Treatment", sep = " ~ ")), weights = "equal")
+      
+# Contrasts, pairwise comparisons, tests, and confidence intervals.
+Glo_emm_mod_cons1_d2 <- contrast(Glo_emm_mod1_d2, method = "pairwise", adjust = "BH")
+print(Glo_emm_mod_cons1_d2)
+
+# The mode shows no statistical significance but before moving on, we need to test the model's assumptions. Obviously the dataset does not fit the assumptions of the model so we cannot use the results and we need to transform the model so that the residuals are normally distributed. One of the easiest ways is to log-transform the data before the analysis.
+
+Glomeris_colony_counts %<>%
+  mutate(log_copies = log2(`Total colonies`))
+
+# check the model
+Glo_model2_d2 <- Glomeris_colony_counts %>% 
+  filter(., Day  == 2) %>% lm(log_copies ~ Treatment, data = .)
+print(Anova(Glo_model2_d2, type = "III"))
+
+
+# checking model assumptions
+check_model(Glo_model2_d2)
+
+Glo_emm_mod2_d2 <- emmeans(Glo_model2_d2, as.formula(paste("", "Treatment", sep = " ~ ")), weights = "equal")
+      
+# Contrasts, pairwise comparisons, tests, and confidence intervals.
+Glo_emm_mod_cons2_d2 <- contrast(Glo_emm_mod2_d2, method = "pairwise", adjust = "BH")
+print(Glo_emm_mod_cons2_d2)
+```
+
+
+
+**Compare time 9 colony counts between groups**
+```{r t7 colony counts aov 2, cache=T}
+Glomeris_colony_counts %>% 
+  filter(., Day  == 9) %>% # select only day 7 entries 
+  aov(log(`Total colonies`) ~ Treatment, .) -> # fit an anova model
+  aov_t9
+  
+print(Anova(aov_t9)) # print results
+
+aov_t9_df <- fortify(aov_t9) # make a data frame for plotting
+factor.combinations <-
+  as.numeric(factor(aov_t9_df$Treatment),
+             levels = unique(as.character(paste(aov_t9_df$Treatment)))
+  ) # needed for "residuals vs leverage
+mod_data_df <-
+  cbind(aov_t9_df,
+        rows = 1:nrow(aov_t9_df),
+        factors = factor.combinations)
+
+PlotLmResid(mod_data_df) # plot residuals
+```
+The ANOVA model indicates a significant difference in the colony counts of the animals' faecal pellets at time 9.
+
+**Post-hoc tests for time 9**
+```{r t9 colony counts post-hoc 2, cache=T}
+TukeyHSD(aov_t9) # Compute Tukey Honest Significant Differences
+```
+Pairs: Post-hoc tests show signififcant differences between Sterile-Control, 2X Diluted-Control and 5X Diluted-Control, but no signififcant differences between Sterile-Control, 2X Diluted-Sterile, 5X Diluted-Sterile and 5X Diluted-2X Diluted.
+
+```{r t9 colony counts aov, cache=T}
+# Building a regression model
+Glo_model1_d9 <- Glomeris_colony_counts %>% 
+  filter(., Day  == 9) %>% lm(`Total colonies` ~ Treatment, data = .)
+
+print(Anova(Glo_model1_d9, type = "III"))
+
+# checking model assumptions
+check_model(Glo_model1_d9)
+
+Glo_emm_mod1_d9 <- emmeans(Glo_model1_d9, as.formula(paste("", "Treatment", sep = " ~ ")), weights = "equal")
+      
+# Contrasts, pairwise comparisons, tests, and confidence intervals.
+Glo_emm_mod_cons1_d9 <- contrast(Glo_emm_mod1_d9, method = "pairwise", adjust = "BH")
+print(Glo_emm_mod_cons1_d9)
+
+# The mode shows no statistical significance but before moving on, we need to test the model's assumptions. Obviously the dataset does not fit the assumptions of the model so we cannot use the results and we need to transform the model so that the residuals are normally distributed. One of the easiest ways is to log-transform the data before the analysis.
+
+Glomeris_colony_counts %<>%
+  mutate(log_copies = log2(`Total colonies`))
+
+# check the model
+Glo_model2_d9 <- Glomeris_colony_counts %>% 
+  filter(., Day  == 9) %>% lm(log_copies ~ Treatment, data = .)
+print(Anova(Glo_model2_d9, type = "III"))
+
+
+# checking model assumptions
+check_model(Glo_model2_d9)
+
+Glo_emm_mod2_d9 <- emmeans(Glo_model2_d9, as.formula(paste("", "Treatment", sep = " ~ ")), weights = "equal")
+      
+# Contrasts, pairwise comparisons, tests, and confidence intervals.
+Glo_emm_mod_cons2_d9 <- contrast(Glo_emm_mod2_d9, method = "pairwise", adjust = "BH")
+print(Glo_emm_mod_cons2_d9)
+```
+
+
+
+**Compare time 16 colony counts between groups**
+```{r t7 colony counts aov 2, cache=T}
+Glomeris_colony_counts %>% 
+  filter(., Day  == 16) %>% # select only day 7 entries 
+  aov(log(`Total colonies`) ~ Treatment, .) -> # fit an anova model
+  aov_t16
+  
+print(Anova(aov_t16)) # print results
+
+aov_t16_df <- fortify(aov_t16) # make a data frame for plotting
+factor.combinations <-
+  as.numeric(factor(aov_t16_df$Treatment),
+             levels = unique(as.character(paste(aov_t16_df$Treatment)))
+  ) # needed for "residuals vs leverage
+mod_data_df <-
+  cbind(aov_t16_df,
+        rows = 1:nrow(aov_t16_df),
+        factors = factor.combinations)
+
+PlotLmResid(mod_data_df) # plot residuals
+```
+The ANOVA model indicates a significant difference in the colony counts of the animals' faecal pellets at time 16.
+
+**Post-hoc tests for time 16**
+```{r t16 colony counts post-hoc 2, cache=T}
+TukeyHSD(aov_t16) # Compute Tukey Honest Significant Differences
+```
+Pairs: Post-hoc tests show signififcant differences between 2X Diluted-Control, 5X Diluted-Control and 2X Diluted-Sterile.
+
+```{r t16 colony counts aov, cache=T}
+# Building a regression model
+Glo_model1_d16 <- Glomeris_colony_counts %>% 
+  filter(., Day  == 16) %>% lm(`Total colonies` ~ Treatment, data = .)
+
+print(Anova(Glo_model1_d16, type = "III"))
+
+# checking model assumptions
+check_model(Glo_model1_d16)
+
+Glo_emm_mod1_d16 <- emmeans(Glo_model1_d16, as.formula(paste("", "Treatment", sep = " ~ ")), weights = "equal")
+      
+# Contrasts, pairwise comparisons, tests, and confidence intervals.
+Glo_emm_mod_cons1_d16 <- contrast(Glo_emm_mod1_d16, method = "pairwise", adjust = "BH")
+print(Glo_emm_mod_cons1_d16)
+
+# The mode shows no statistical significance but before moving on, we need to test the model's assumptions. Obviously the dataset does not fit the assumptions of the model so we cannot use the results and we need to transform the model so that the residuals are normally distributed. One of the easiest ways is to log-transform the data before the analysis.
+
+Glomeris_colony_counts %<>%
+  mutate(log_copies = log2(`Total colonies`))
+
+# check the model
+Glo_model2_d16 <- Glomeris_colony_counts %>% 
+  filter(., Day  == 16) %>% lm(log_copies ~ Treatment, data = .)
+print(Anova(Glo_model2_d16, type = "III"))
+
+
+# checking model assumptions
+check_model(Glo_model2_d16)
+
+Glo_emm_mod2_d16 <- emmeans(Glo_model2_d16, as.formula(paste("", "Treatment", sep = " ~ ")), weights = "equal")
+      
+# Contrasts, pairwise comparisons, tests, and confidence intervals.
+Glo_emm_mod_cons2_d16 <- contrast(Glo_emm_mod2_d16, method = "pairwise", adjust = "BH")
+print(Glo_emm_mod_cons2_d16)
+```
+
+
+
+**Compare time 23 colony counts between groups**
+```{r t7 colony counts aov 2, cache=T}
+Glomeris_colony_counts %>% 
+  filter(., Day  == 23) %>% # select only day 7 entries 
+  aov(log(`Total colonies`) ~ Treatment, .) -> # fit an anova model
+  aov_t23
+  
+print(Anova(aov_t23)) # print results
+
+aov_t23_df <- fortify(aov_t23) # make a data frame for plotting
+factor.combinations <-
+  as.numeric(factor(aov_t23_df$Treatment),
+             levels = unique(as.character(paste(aov_t23_df$Treatment)))
+  ) # needed for "residuals vs leverage
+mod_data_df <-
+  cbind(aov_t23_df,
+        rows = 1:nrow(aov_t23_df),
+        factors = factor.combinations)
+
+PlotLmResid(mod_data_df) # plot residuals
+```
+The ANOVA model indicates a significant difference in the colony counts of the animals' faecal pellets at time 23.
+
+**Post-hoc tests for time 23**
+```{r t23 colony counts post-hoc 2, cache=T}
+TukeyHSD(aov_t23) # Compute Tukey Honest Significant Differences
+```
+Pairs: Post-hoc tests show signififcant differences between Sterile-Control, 2X Diluted-Control, 5X Diluted-Control and 2X Diluted-Sterile.
+
+```{r t23 colony counts aov, cache=T}
+# Building a regression model
+Glo_model1_d23 <- Glomeris_colony_counts %>% 
+  filter(., Day  == 23) %>% lm(`Total colonies` ~ Treatment, data = .)
+
+print(Anova(Glo_model1_d23, type = "III"))
+
+# checking model assumptions
+check_model(Glo_model1_d23)
+
+Glo_emm_mod1_d23 <- emmeans(Glo_model1_d23, as.formula(paste("", "Treatment", sep = " ~ ")), weights = "equal")
+      
+# Contrasts, pairwise comparisons, tests, and confidence intervals.
+Glo_emm_mod_cons1_d23 <- contrast(Glo_emm_mod1_d23, method = "pairwise", adjust = "BH")
+print(Glo_emm_mod_cons1_d23)
+
+# The mode shows no statistical significance but before moving on, we need to test the model's assumptions. Obviously the dataset does not fit the assumptions of the model so we cannot use the results and we need to transform the model so that the residuals are normally distributed. One of the easiest ways is to log-transform the data before the analysis.
+
+Glomeris_colony_counts %<>%
+  mutate(log_copies = log2(`Total colonies`))
+
+# check the model
+Glo_model2_d23 <- Glomeris_colony_counts %>% 
+  filter(., Day  == 23) %>% lm(log_copies ~ Treatment, data = .)
+print(Anova(Glo_model2_d23, type = "III"))
+
+
+# checking model assumptions
+check_model(Glo_model2_d23)
+
+Glo_emm_mod2_d23 <- emmeans(Glo_model2_d23, as.formula(paste("", "Treatment", sep = " ~ ")), weights = "equal")
+      
+# Contrasts, pairwise comparisons, tests, and confidence intervals.
+Glo_emm_mod_cons2_d23 <- contrast(Glo_emm_mod2_d23, method = "pairwise", adjust = "BH")
+print(Glo_emm_mod_cons2_d23)
+```
+
+
 **Compare time 28 colony counts between groups**
 ```{r t7 colony counts aov 2, cache=T}
 Glomeris_colony_counts %>% 
   filter(., Day  == 28) %>% # select only day 7 entries 
-  aov(`Total colonies` ~ Treatment, .) -> # fit an anova model
+  aov(log(`Total colonies`) ~ Treatment, .) -> # fit an anova model
   aov_t28
   
 print(Anova(aov_t28)) # print results
@@ -502,3 +842,40 @@ The ANOVA model indicates a significant difference in the colony counts of the a
 TukeyHSD(aov_t28) # Compute Tukey Honest Significant Differences
 ```
 Pairs: Post-hoc tests show signififcant differences between 2X Diluted-Control and 5X Diluted-Control, but no signififcant differences between Sterile-Control, 2X Diluted-Sterile, 5X Diluted-Sterile and 5X Diluted-2X Diluted.
+
+```{r t28 colony counts aov, cache=T}
+# Building a regression model
+Glo_model1_d28 <- Glomeris_colony_counts %>% 
+  filter(., Day  == 28) %>% lm(`Total colonies` ~ Treatment, data = .)
+
+print(Anova(Glo_model1_d28, type = "III"))
+
+# checking model assumptions
+check_model(Glo_model1_d28)
+
+Glo_emm_mod1_d28 <- emmeans(Glo_model1_d28, as.formula(paste("", "Treatment", sep = " ~ ")), weights = "equal")
+      
+# Contrasts, pairwise comparisons, tests, and confidence intervals.
+Glo_emm_mod_cons1_d28 <- contrast(Glo_emm_mod1_d28, method = "pairwise", adjust = "BH")
+print(Glo_emm_mod_cons1_d28)
+
+# The mode shows no statistical significance but before moving on, we need to test the model's assumptions. Obviously the dataset does not fit the assumptions of the model so we cannot use the results and we need to transform the model so that the residuals are normally distributed. One of the easiest ways is to log-transform the data before the analysis.
+
+Glomeris_colony_counts %<>%
+  mutate(log_copies = log2(`Total colonies`))
+
+# check the model
+Glo_model2_d28 <- Glomeris_colony_counts %>% 
+  filter(., Day  == 28) %>% lm(log_copies ~ Treatment, data = .)
+print(Anova(Glo_model2_d28, type = "III"))
+
+
+# checking model assumptions
+check_model(Glo_model2_d28)
+
+Glo_emm_mod2_d28 <- emmeans(Glo_model2_d28, as.formula(paste("", "Treatment", sep = " ~ ")), weights = "equal")
+      
+# Contrasts, pairwise comparisons, tests, and confidence intervals.
+Glo_emm_mod_cons2_d28 <- contrast(Glo_emm_mod2_d28, method = "pairwise", adjust = "BH")
+print(Glo_emm_mod_cons2_d28)
+```
