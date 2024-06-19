@@ -276,8 +276,8 @@ Species tested: *E. pulchripes*.
 
 **Load data **
 ```{r load E. pulchripes data, cache = T}
-read_ods("29_Epibolus_pulchripes_methanogenesis Inhibition.csv",
-         sheet = "29_Epibolus_pulchripes_methanogenesis Inhibition",  col_names = TRUE) %>% # read the ODS file
+read_csv("29_Epibolus_pulchripes_methanogenesis_Inhibition.csv",
+         col_names = TRUE) %>% # read the ODS file
   mutate_at(c("Code",
               "Treatment",
               "Replicate",
