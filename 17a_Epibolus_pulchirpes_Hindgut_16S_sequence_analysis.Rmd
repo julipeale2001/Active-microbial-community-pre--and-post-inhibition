@@ -913,7 +913,7 @@ total = median(sample_sums(Epi_hindgut2))
 standf = function(x, t=total) round(t * (x / sum(x)))
 Epi_hindgut2 = transform_sample_counts(Epi_hindgut2, standf)
 
-#Changing order of levels
+# Changing order of levels
 sample_data(Epi_hindgut2)$Treatment<-factor(sample_data(Epi_hindgut2)$Treatment, levels=c("Control", "Sterile feed", "Antibiotics (2X)", "Antibiotics (1X)"))
 levels(sample_data(Epi_hindgut2)$Treatment)
 ```
@@ -1111,13 +1111,14 @@ print(Epi_hindgut_d)
 
 Epi_hindgut_glom_rel_DF_2plot$Treatment <- factor(Epi_hindgut_glom_rel_DF_2plot$Treatment, levels = c("Control", "Sterile feed", "Antibiotics (2X)", "Antibiotics (1X)"))
 
+
 Epi_hindgut_glom_rel_DF_2plot %>%
 group_by(Sample.type, Treatment, Phylum) %>% 
 summarize(`Relative abundance` = mean(Abundance*100)) %>%
 arrange(desc(Sample.type), desc(`Relative abundance`)) %>%
 arrange(desc(Treatment), desc(`Relative abundance`)) %>%
 kable(., digits = 2, caption = "Relative abundance at genus level") %>%
-  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"), full_width = F)
+kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"), full_width = F)
 ```
 
 
@@ -1163,7 +1164,7 @@ Epi_hindgut_glom_rel_DF %>%
   medians
 
 # find Phyla whose rel. abund. is less than 0.5%
-Other_phyla <- medians[medians$median <= 0.009, ]$Genus
+Other_phyla <- medians[medians$median <= 0.02, ]$Genus
 
 # change their name to "Rares"
 Epi_hindgut_glom_rel_DF[Epi_hindgut_glom_rel_DF$Genus %in% Other_phyla, ]$Genus <- 'Rares'
@@ -1245,8 +1246,14 @@ kable(., digits = 2, caption = "Relative abundance at genus level") %>%
 *Creating 100% abundance stacked bar plots with all the genus in Epibolus dataset*
 
 ```{r Creating 100% abundance stacked bar plots for most abundant ASVs for Genus distribution Epibolus hindgut, cache = T}
+grid.colour = c(Citrobacter  = "#006400", Desulfovibrio  = "#A52A2A", Bacteroides  = "#008080", Alistipes  = "#8A2BE2", Candidatus_Symbiothrix  = "#808000", Candidatus_Methanoplasma = "#00FF00", Pseudomonas = "#00FFFF", Rares   = "#C0C0C0")
+                
 
-Epi_hindgut_b <- ggplot(data = Epi_hindgut_glom_rel_DF_2plot, mapping = aes_string(x = "Treatment", y = "Abundance")) + geom_bar(aes(color = Genus, fill  = Genus), stat = "identity", position= "fill") + ylab("Relative Abundance") 
+Epi_hindgut_glom_rel_DF_2plot %>%
+group_by(Treatment, Genus) %>%
+summarize(Abundance = sum(Abundance)) %>%
+ggplot(mapping = aes_string(x = "Treatment", y = "Abundance")) + geom_bar(aes(fill  = Genus), stat = "identity", position= "fill") + ylab("Relative Abundance") + scale_fill_manual(values = grid.colour) ->
+Epi_hindgut_b
 Epi_hindgut_b$data$Treatment <- factor(Epi_hindgut_b$data$Treatment, levels = c("Control", "Sterile feed", "Antibiotics (2X)", "Antibiotics (1X)"))
 Epi_hindgut_b
 ```
