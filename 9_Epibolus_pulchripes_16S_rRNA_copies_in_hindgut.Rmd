@@ -1,7 +1,7 @@
 ---
 title: "16S rRNA Copy Number Analysis for Antibiotics Treated Millipede Microbial Communities"
 subtitle: "Copy Number Analysis"
-author: "Nweze Julius"
+author: "Roey Angel"
 date: "`r Sys.Date()`"
 link-citations: yes
 csl: fems-microbiology-ecology.csl
@@ -60,7 +60,8 @@ update.packages(
    "cmprsk",  # Competing Risks Packages
   "sm",  # Smooth survival plot - quantile of survival
   "prodlim",
-  "pec"
+  "pec",
+  "performance"
 ) 
 
 .inst <- .cran_libs %in% installed.packages()
@@ -274,7 +275,7 @@ Species tested: *E. pulchripes*
 
 ### *E. pulchripes* hindgut bacterial 16S copy analysis
 ```{r load hindgut copy number data by Epibolus, cache = T}
-read_csv("9_Epibolus_Hindgut_Copy_Numbers.csv",
+read_csv("9_ddPCR_Copy_Numbers.csv",
          trim_ws = TRUE,
          col_names = TRUE) %>% # read the csv file
   mutate_at(c("Code",
@@ -282,33 +283,31 @@ read_csv("9_Epibolus_Hindgut_Copy_Numbers.csv",
               "Replicate",
               "Individual"),
             ~ (factor(.))) %>% # convert to factor
-     mutate(Treatment = fct_relevel(Treatment, "Control", "Sterile", "2X Diluted", "Undiluted"))-> # arrange factor levels 4 plotting
-  Epi_Hindgut
+     mutate(Treatment = fct_relevel(Treatment, "Control", "Sterile", "Diluted", "Hi_conc."))-> # arrange factor levels 4 plotting
+  ddPCR_copies
 
 ```
 
 *Barplot of E. pulchripes hindgut bacterial copy numbers for all replicates*
 ```{r plot all hindgut copy numbers by Epibolus, cache=TRUE}
 # Barplot for all total copy numbers
-ggplot(Epi_Hindgut, aes(x = Code, y = `Total Copy Numbers of 16S rRNA`, fill = Treatment, group = Code)) + 
-  geom_bar(stat = 'identity', position='dodge') +  xlab("Groups") + scale_y_continuous(label=scientific)
+ggplot(ddPCR_copies, aes(x = Treatment, y = `Total Copy Numbers of 16S rRNA`, fill = Treatment, group = Code)) + 
+  geom_bar(stat = 'identity', position='dodge') +  xlab("Treatment") + scale_y_continuous(label=scientific) +
+  facet_grid(`Sample type` ~ Species , scales = "free")
 
 # Barplot for all 16S rRNA Copies/1 ng DNAs
-ggplot(Epi_Hindgut, aes(x = Code, y = `16S rRNA Copies/1 ng DNA`, fill = Treatment, group = Code)) + 
-  geom_bar(stat = 'identity', position='dodge') +  xlab("Groups") + scale_y_continuous(label=scientific)
-
-# Barplot for all 16S rRNA Copies/mg sample weight
-ggplot(Epi_Hindgut, aes(x = Code, y = `16S rRNA Copies/mg sample weight`, fill = Treatment, group = Code)) + 
-  geom_bar(stat = 'identity', position='dodge') +  xlab("Groups") + scale_y_continuous(label=scientific)
+ggplot(ddPCR_copies, aes(x = Treatment, y = `16S rRNA Copies/1 ng DNA`, fill = Treatment, group = Code)) + 
+  geom_bar(stat = 'identity', position='dodge') +  xlab("Treatment") + scale_y_continuous(label=scientific) +
+  facet_grid(`Sample type` ~ Species , scales = "free")
 
 ```
 
 *Barplot of E. pulchripes hindgut bacterial mean copy numbers**
 ```{r plot mean+SE hindgut copy numbers by Epibolus, cache = TRUE}
 # Barplot for mean total copy numbers
- Epi_Hindgut %>%  # the name of the new data frame and the data frame to be summarised
+ ddPCR_copies %>%  # the name of the new data frame and the data frame to be summarised
   drop_na() %>% # drop rows with missing values
-  group_by(Treatment) %>%   # the grouping variable
+  group_by(Species, Treatment, `Sample type`) %>%   # the grouping variable
   summarise(`Mean Total Copy Numbers of 16S rRNA` = mean(`Total Copy Numbers of 16S rRNA`),  # calculates the mean of each group
             StD = sd(`Total Copy Numbers of 16S rRNA`), # calculates the standard deviation of each group
             n = n(),  # calculates the sample size per group
@@ -317,12 +316,15 @@ ggplot(Epi_Hindgut, aes(x = Code, y = `16S rRNA Copies/mg sample weight`, fill =
 
 # Create plot
 ggplot(Total_mean, aes(x = Treatment, y = `Mean Total Copy Numbers of 16S rRNA`)) + 
-  geom_bar(stat = 'identity', position='dodge', fill = pom4, aes(fill=Treatment)) +
+  geom_bar(stat = 'identity', position='dodge', aes(fill=Treatment)) +
   geom_errorbar(aes(ymin = `Mean Total Copy Numbers of 16S rRNA` - SE, ymax = `Mean Total Copy Numbers of 16S rRNA` + SE), width=.2,
-                 position=position_dodge(.9)) + scale_y_continuous(label=scientific)
+                 position=position_dodge(.9)) + scale_y_continuous(label=scientific) +
+  facet_grid(`Sample type` ~ Species , scales = "free")
+
+ # fill = pom4, 
 
 # Barplot for mean 16S rRNA Copies/1 ng DNA
-Epi_Hindgut %>%  # the name of the new data frame and the data frame to be summarised
+ddPCR_copies %>%  # the name of the new data frame and the data frame to be summarised
   drop_na() %>% # drop rows with missing values
   group_by(Treatment) %>%   # the grouping variable
   summarise(`Mean 16S rRNA Copies/1 ng DNA` = mean(`16S rRNA Copies/1 ng DNA`),  # calculates the mean of each group
@@ -337,30 +339,14 @@ ggplot(DNA_mean, aes(x = Treatment, y = `Mean 16S rRNA Copies/1 ng DNA`)) +
   geom_bar(stat = 'identity', position='dodge', fill = pom4, aes(fill=Treatment)) +
   geom_errorbar(aes(ymin = `Mean 16S rRNA Copies/1 ng DNA` - SE, ymax = `Mean 16S rRNA Copies/1 ng DNA` + SE), width=.2,
                  position=position_dodge(.9)) + scale_y_continuous(label=scientific)
-
-# Barplot for mean 16S rRNA Copies/mg sample weight
-Epi_Hindgut %>%  # the name of the new data frame and the data frame to be summarised
-  drop_na() %>% # drop rows with missing values
-  group_by(Treatment) %>%   # the grouping variable
-  summarise(`Mean 16S rRNA Copies/mg sample weight` = mean(`16S rRNA Copies/mg sample weight`),  # calculates the mean of each group
-            StD = sd(`16S rRNA Copies/mg sample weight`), # calculates the standard deviation of each group
-            n = n(),  # calculates the sample size per group
-            SE = sd(`16S rRNA Copies/mg sample weight`)/sqrt(n())) -> # calculates the standard error of each group
-  Weight_mean
-
-
-# Create plot
-ggplot(Weight_mean, aes(x = Treatment, y = `Mean 16S rRNA Copies/mg sample weight`)) + 
-  geom_bar(stat = 'identity', position='dodge', fill = pom4, aes(fill=Treatment)) +
-  geom_errorbar(aes(ymin = `Mean 16S rRNA Copies/mg sample weight` - SE, ymax = `Mean 16S rRNA Copies/mg sample weight` + SE), width=.2,
-                 position=position_dodge(.9)) + scale_y_continuous(label=scientific)
 ```
 
 #### Anova tests
 **Compare Epibolus hindgut bacterial 16S copy numbers between groups**
 ```{r  hindgut copy number aov by Epibolus, cache=T}
 # ANOVA for total copy numbers
-Epi_Hindgut %>% 
+ddPCR_copies %>% 
+  filter(Species == "E. pulchripes") %>% 
   aov(`Total Copy Numbers of 16S rRNA` ~ Treatment, .) -> # fit an anova model
   aov_total
   
@@ -377,59 +363,49 @@ mod_data_df_total <-
         factors = factor.combinations)
 
 PlotLmResid(mod_data_df_total) # plot residuals
+check_model(aov_total)
 
-# ANOVA for 16S rRNA Copies/1 ng DNA
-Epi_Hindgut %>% 
-  aov(`16S rRNA Copies/1 ng DNA` ~ Treatment, .) -> # fit an anova model
-  aov_dna
-  
-print(Anova(aov_dna)) # print results
+emm_mod <- emmeans(aov_total, as.formula(paste("", "Treatment", sep = " ~ ")), weights = "equal")
+# Contrasts, pairwise comparisons, tests, and confidence intervals.
+emm_mod_cons <- contrast(emm_mod, method = "pairwise", adjust = "BH")
+print(emm_mod_cons)
 
-aov_dna_df <- fortify(aov_dna) # make a data frame for plotting
+
+ddPCR_copies %>% 
+  filter(Species == "E. pulchripes") %>% 
+  aov(log2(`Total Copy Numbers of 16S rRNA`) ~ Treatment, .) -> # fit an anova model
+  aov_total_log
+print(Anova(aov_total_log)) # print results
+
+aov_total_log_df <- fortify(aov_total_log) # make a data frame for plotting
 factor.combinations <-
-  as.numeric(factor(aov_dna_df$Treatment),
-             levels = unique(as.character(paste(aov_dna_df$Treatment)))
+  as.numeric(factor(aov_total_log_df$Treatment),
+             levels = unique(as.character(paste(aov_total_log_df$Treatment)))
   ) # needed for "residuals vs leverage
-mod_data_df_dna <-
-  cbind(aov_dna_df,
-        rows = 1:nrow(aov_dna_df),
+mod_data_df_total_log <-
+  cbind(aov_total_log_df,
+        rows = 1:nrow(aov_total_log_df),
         factors = factor.combinations)
 
-PlotLmResid(mod_data_df_dna) # plot residuals
+PlotLmResid(mod_data_df_total_log) # plot residuals
+check_model(aov_total_log)
 
-# ANOVA for 16S rRNA Copies/mg sample weight
-Epi_Hindgut %>% 
-  aov(`16S rRNA Copies/mg sample weight` ~ Treatment, .) -> # fit an anova model
-  aov_weight
-  
-print(Anova(aov_weight)) # print results
+emm_mod <- emmeans(aov_total_log, as.formula(paste("", "Treatment", sep = " ~ ")), weights = "equal")
+# Contrasts, pairwise comparisons, tests, and confidence intervals.
+emm_mod_cons <- contrast(emm_mod, method = "pairwise", adjust = "BH")
+print(emm_mod_cons)
 
-aov_weight_df <- fortify(aov_weight) # make a data frame for plotting
-factor.combinations <-
-  as.numeric(factor(aov_weight_df$Treatment),
-             levels = unique(as.character(paste(aov_weight_df$Treatment)))
-  ) # needed for "residuals vs leverage
-mod_data_df_weight <-
-  cbind(aov_weight_df,
-        rows = 1:nrow(aov_weight_df),
-        factors = factor.combinations)
 
-PlotLmResid(mod_data_df_weight) # plot residuals
+
 ```
 1. The ANOVA model indicates a significant different in the total copy numbers.
 2. The ANOVA model indicates a significant different in the 16S rRNA Copies/1 ng DNA.
-3. The ANOVA model indicates a significant different in the 16S rRNA Copies/mg sample weight.
+
 
 **Post-hoc tests for E. pulchripes hindgut bacterial 16S copy numbers between groups**
 ```{r  hindgut copy number post-hoc by Epibolus, cache=T}
 # Post-hoc tests for total copy numbers
 TukeyHSD(aov_total) # Compute Tukey Honest Significant Differences
-
-# Post-hoc tests for 16S rRNA Copies/1 ng DNA
-TukeyHSD(aov_dna)
-
-# Post-hoc tests for 16S rRNA Copies/mg sample weight
-TukeyHSD(aov_weight)
 ```
 Pairs: 
 1. There are significant differences between: 2X Diluted-Sterile and Undiluted-Sterile only in the total copy numbers.
