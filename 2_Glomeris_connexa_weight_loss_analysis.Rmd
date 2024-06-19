@@ -18,6 +18,8 @@ output:
     df_print: "kable"
     fig_caption: true
     code_folding: "show"
+editor_options: 
+  chunk_output_type: console
 ---
 
 ```{r libraries, include=F}
@@ -407,7 +409,7 @@ Glomeris_weights %>%
 
 model.a <- 
   lme(Weight ~ Treatment + Day + Treatment * Day, 
-      random = ~ 1 | Individual,
+      random = ~ Day | Individual,
       data = Glomeris_weights4model) # determine autocorrelations/lag
 
 autocorr.lme <- ACF(model.a,
@@ -416,27 +418,96 @@ autocorr.lme <- ACF(model.a,
 # Fit a linear mixed-effects model 
 lme(Weight ~ Treatment + Day + Treatment * Day, 
     data = Glomeris_weights4model,
-    random = ~1|Individual,
+    random = ~Day|Individual,
     correlation = corAR1(form = ~ Day | Individual, 
                          value = autocorr.lme),
     method = "REML") ->
 lme.fit
 
 summary(lme.fit)
+
+
+
+# We shall use a model with no interaction
+model.a <- 
+  lme(Weight ~ Treatment + Day, 
+      random = ~ Day | Individual,
+      data = Glomeris_weights4model) # determine autocorrelations/lag
+
+autocorr.lme <- ACF(model.a,
+                form = ~ Day | Individual)[2, 2]
+
+# Fit a linear mixed-effects model 
+lme(Weight ~ Treatment + Day, 
+    data = Glomeris_weights4model,
+    random = ~Day|Individual,
+    correlation = corAR1(form = ~ Day | Individual, 
+                         value = autocorr.lme),
+    method = "REML") ->
+lme.fit
+
+summary(lme.fit)
+
+
 anova(lme.fit)
+
+report::report(lme.fit)
 ```
 The model indicates some minor effect of the treatment on certian days
 
 **Plot diagnostic plots for the lme model**
 ```{r Glomeris diag plots lme 2, cache=T}
 resid_panel(lme.fit)
+
+# # We can see the QQ-plot:
+print(qqnorm(lme.fit, abline = c(0, 1), pch = 16))
+
+# We saw 5 outliers. Let us identify these observations in out database. First, let us obtain the standardized residuals
+res=resid(lme.fit, type="p")
+
+# Then we look for the observations with an absolute standardized residual greater than 2:
+which(abs(res) >2)
+
+
+# We see that there are, in fact, 14 observations that lead to extreme residuals. Actually, these observations come from the individuals labelled 29, 30, 37, 13, 26, 38 and 40. Let us inspect the individual with
+# ID = 23:
+res[Glomeris_weights4model$Individual == 29]
+
+ #        29         29         29         29         29         29         29 
+ # 4.3746443 -0.3945115 -0.3324507 -1.2054642 -2.0784776 -2.6397996  2.4093234
+
+# Let us see these observations
+subset(Glomeris_weights4model, Individual == 29)
+
+# Code  Weight Treatment  Replicate Date         Day Individual
+#   <fct>  <dbl> <fct>      <fct>     <date>     <dbl> <fct>     
+# 1 3C     0.077 2X diluted 3         2019-11-11     0 23        
+# 2 3C     0.081 2X diluted 3         19-11-18       7 23        
+# 3 3C     0.081 2X diluted 3         41-11-25      14 23        
+# 4 3C     0.079 2X diluted 3         2019-12-02    21 23        
+# 5 3C     0.081 2X diluted 3         2019-12-09    28 23        
+# 6 3C     0.08  2X diluted 3         2019-12-16    35 23        
+# 7 3C     0.08  2X diluted 3         2019-12-23    42 23 
+
+# The weight was decreasing and increasing on different days.
+# The weight was decreasing and increasing on different days. It  appears as an outlier in the residuals. The problem with outliers is that sometimes they have an important influence in the model estimates
+# We can check this by adjusting the model again, but excluding these individuals. If the two models give similar estimates, we will conclude that the outliers are simple anomalies in the model. If the two models give similar estimates, we will conclude that the outliers are simple anomalies in the model. However, if they give very different estimates, we would consider invalid the model with outliers.
+
+# Let us adjust the model again but excluding individuals 29, 30, 37, 13, 26, 38 and 40:
+
+Glomeris_weights4model2 = subset(Glomeris_weights4model, Individual!=29 & Individual!=30 & Individual!=37 & Individual!=13 & Individual!=26 &  Individual!=38 & Individual!=40)
+mod7 = lme(Weight ~ Day + Treatment , dat = Glomeris_weights4model2, random=~ Day|Individual)
+summary(mod7)
+
+# The standard deviation estimate of the random effect is 1.22 and 0.0038, whereas in the model with the complete dataset (the best chosen model) it was 1.17 and 0.0035. Regarding the random error, now we have a standard deviation of 0.12 in this model, whereas in the preivous model (the best chosen model) it was 0.17. Thus, the change in these two variabilities is small. If we look at the fixed effects, we conclude that the estimates barely change from one model to another, and the interaction term is still statistically significant. In conclusion, the six animals affecting the residuals do not have an important impact in the model estimates so we decide to keep the first model.
+
 ```
 
 Check if including random effects term is justified
 ```{r Glomeris rand 2, cache=T}
 # is the random effect meaningful?
 Glomeris_weights4model %>% 
-  gls(Weight ~ Treatment + Day + Treatment * Day,
+  gls(Weight ~ Treatment + Day,
       data = .,
       method = "REML") ->
   gls.fixed.fit
@@ -450,7 +521,7 @@ Calculate a p-value and pseudo R-squared value for the model by comparing it to 
 ```{r Glomeris model p-value and post-hoc tests 2}
 Glomeris_weights4model %>% 
   lme(Weight ~ 1,
-      random = ~1|Individual,
+      random = ~Day|Individual,
       data = .) ->
   model.null
 
@@ -468,3 +539,157 @@ cld(marginal,
 ```
 
 The model is significant but the effects are too small to see in the post-hoc tests.
+
+
+# Linear mixed model with random effect model
+```{r Glomeris random effect model}
+Glomeris_weights %>% 
+  drop_na() %>% # drop missing entries
+  rename(Weight = `Weight (g)`) -> # rename column 
+  Glomeris_REM # data frame for modeling
+
+# Model estimation
+# Slopes and intercepts varying per group
+mod1 <- lme(Weight ~ Day*Treatment, random = ~1|Individual, data = Glomeris_REM)
+mod2 <- lme(Weight ~ Day + Treatment, random = ~1|Individual, data = Glomeris_REM)
+mod3 <- lme(Weight ~ Day + Treatment + Day*Treatment, random = ~1|Individual, data = Glomeris_REM)
+
+
+# Perform anova function: # The Akaike information criterion (AIC) is a mathematical method for evaluating how well a model fits the data it was generated from. In statistics, AIC is used to compare different possible models and determine which one is the best fit for the data. 
+anova(mod1, mod2, mod3)
+
+# mod2 has the lowest AIC and it is he best
+summary(mod2)
+# The importance of a random effect can be assessed by comparing its variance to that of the random error. In this case, the standard deviation of the random effect b0i is approximately 0.18 times higher than than of the random error, thus this random effect is important
+
+
+# More formally, we can evaluate the null hypothesis σ0 = 0. If we do not reject it, we will conclude that it is not necessary to include this random effect in the model. First, we should estimate the model with no random effect using the function gls
+
+mod4 = gls(Weight ~ Day + Treatment, data = Glomeris_REM)
+summary(mod4)
+
+# Once the model with no random effect is estimated, the hypothesis test should be performed with the function anova:
+anova(mod4, mod2)
+
+# The p-value is lower than 0.05 (the usual type I error used in hypothesis tests), so we have enough evidence to say that the variance of the random effect is different from 0.
+
+# Then we think about adding a random effect in the Day slope:
+mod5 <- lme(Weight ~ Day + Treatment, random = ~Day|Individual, data = Glomeris_REM)
+summary(mod5)
+
+# The standard deviation of the random effect b2i is very small compared to that of the random effect b0i. If we test the null hypothesis of σ2 = 0
+anova(mod5, mod2)
+
+# We reject the null hypothesis and so we should include this effect in our model.
+# In conclusion, our best model is the one that includes a random effect in the intercept and slope, and then a fixed effect in the slope.
+
+# Now let us evaluate the fixed effects
+#  First of all, we should test if there is an interaction between Day and Treatment. Remember that the interaction effect implies the following: the slope between the Weight (our response variable) and Day is different depending on the Treatment. Thus, we need to test the null hypothesis β3 = 0 versus the alternative β3 6 = 0. To solve this contrast we may use the test shown in the summary table of the fixed effects in mod3:
+
+
+mod6 <- lme(Weight ~ Day + Treatment+ Day*Treatment, random = ~Day|Individual, data = Glomeris_REM)
+summary(mod6)
+
+anova(mod6, mod2)
+
+
+# The p-value corresponding to the interaction term is lower than 0.05, so we reject the null hypothesis. Thus, there is a significant interaction between Day and Treatment.
+
+
+# The general model that we have obtained can be written as follows:
+# Sterile
+# Weight = 0.10626832 - 0.00216192 + 0.00000849 * Day = 0.1041064 + 0.00000849 * Day (D14; 0.104)
+
+# 2X Diluted
+# Weight = 0.10626832 + 0.00494708 + 0.00000849 * Day = 0.1112154 + 0.00000849 * Day (D14; 0.111)
+
+# 5X Diluted
+# Weight = 0.10626832 + 0.00918342 + 0.00000849 * Day = 0.11545174 + 0.00000849 * Day (D14; 0.116)
+
+
+# Control 
+# Weight = 0.10626832 + 0.00000849 * Day (D14; 0.106)
+
+# The slopes for antibiotics-treated groups were less than that for Control or Sterile group. That is, the weight in Days is less. Moreover, the Weight increases, in mean, 0.003401 g per day in the Control group, and decreases 0.00271 in Sterile, 0.004786 in 2X Diluted and 0.005271 in Undiluted.
+# The random effect in the intercept can be interpreted as the variability of the initial weight between Control and other treatments. This variability is represented by a standard deviation of 1.17 g.
+
+# Run anova for mod6
+anova(mod6)
+# automatically produces reports of models and data frames according to best practices guidelines
+report::report(mod6)
+
+
+
+
+# Model validation: Once we have chosen a model for our data, the next step is to check if the assumptions of the model are met. We need to validate the following assumptions: independence of the random errors, normality of residuals and presence of outliers.
+
+# We can check the independence of the random errors using a dispersion plot of the standardized residuals versus the predicted values:
+print(plot(mod6, pch=16, which=1))
+
+# In this plot we see that the behaviour of the residuals is, in general, right. Most of them take values between -2 and 2 and there are only 15 observations with a standardized residual (in absolute value) greater than 2. Moreover, we do not see any grouping of observations nor trends.
+
+# We can see the QQ-plot:
+print(qqnorm(mod6, abline = c(0, 1), pch = 16))
+
+
+# We saw 5 outliers. Let us identify these observations in out database. First, let us obtain the standardized residuals
+res=resid(mod6, type="p")
+
+# Then we look for the observations with an absolute standardized residual greater than 2:
+which(abs(res) >2)
+
+# We see that there are, in fact, 15 observations that lead to extreme residuals. Actually, these observations come from the individuals labelled 23, 31, 34, 3, 29 and 40. Let us inspect the individual with
+# ID = 23:
+res[Glomeris_REM$Individual == 23]
+
+# 23         23         23         23         23         23         23 
+# 2.8382062 -1.8069709 -0.8794832 -0.7661836  0.3060486  0.2987277  0.1647554
+
+# Let us see these observations
+subset(Glomeris_REM, Individual == 23)
+
+# Code  Weight Treatment Replicate Date         Day Individual Status
+#  <fct>  <dbl> <fct>     <fct>     <date>     <dbl> <fct>       <dbl>
+# 1 3C      5.96 Undiluted 3         2019-11-05     0 23              0
+# 2 3C      5.14 Undiluted 3         1941-11-12     7 23              0
+# 3 3C      5.24 Undiluted 3         1941-11-19    14 23              0
+# 4 3C      5.21 Undiluted 3         1941-11-26    21 23              0
+# 5 3C      5.34 Undiluted 3         2019-12-03    28 23              0
+# 6 3C      5.28 Undiluted 3         2019-12-10    35 23              0
+# 7 3C      5.21 Undiluted 3         2019-12-17    42 23              0
+
+# The weight was decreasing and increasing on different days.
+
+# If we look at subject 31:
+res[Glomeris_REM$Individual == 31]
+
+#        31         31         31         31         31         31         31 
+# 2.3152401  2.1562872 -3.4547100 -2.4315826 -0.9500974 -0.4938861  2.9114952
+
+# Let us see these observations
+subset(Glomeris_REM, Individual == 31)
+
+#  Code  Weight Treatment  Replicate Date         Day Individual Status
+#   <fct>  <dbl> <fct>      <fct>     <date>     <dbl> <fct>       <dbl>
+# 1 4A      5.22 2X Diluted 1         2019-11-05     0 31              0
+# 2 4A      5.16 2X Diluted 1         1949-11-12     7 31              0
+# 3 4A      4.19 2X Diluted 1         1949-11-19    14 31              0
+# 4 4A      4.32 2X Diluted 1         1949-11-26    21 31              0
+# 5 4A      4.53 2X Diluted 1         2019-12-03    28 31              0
+# 6 4A      4.56 2X Diluted 1         2019-12-10    35 31              0
+# 7 4A      5.09 2X Diluted 1         2019-12-17    42 31              0
+
+
+# The weight was decreasing and increasing on different days. It  appears as an outlier in the residuals. The problem with outliers is that sometimes they have an important influence in the model estimates
+# We can check this by adjusting the model again, but excluding these individuals. If the two models give similar estimates, we will conclude that the outliers are simple anomalies in the model. If the two models give similar estimates, we will conclude that the outliers are simple anomalies in the model. However, if they give very different estimates, we would consider invalid the model with outliers.
+
+# Let us adjust the model again but excluding individuals 23, 31, 34, 3, 29 and 40:
+
+Glomeris_REM2 = subset(Glomeris_REM, Individual!=22 & Individual!=31 & Individual!=34 & Individual!=3 & Individual!=29 & Individual!=40)
+mod7 = lme(Weight ~ Day + Treatment+ Day*Treatment, dat = Glomeris_REM2, random=~ Day|Individual)
+summary(mod7)
+
+# The standard deviation estimate of the random effect is in mod7 1.22, whereas in the model with the complete dataset (mod6) it was 1.17. Regarding the random error, now we have a standard deviation of 0.12 in mod7, whereas in the preivous model (mod6) it was 0.17. Thus, the change in these two variabilities is small. If we look at the fixed effects, we conclude that the estimates barely change from one model to another, and the interaction term is still statistically significant. In conclusion, the six animals affecting the residuals do not have an important impact in the model estimates so we decide to keep the first model.
+
+
+```
