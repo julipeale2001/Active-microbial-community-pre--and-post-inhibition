@@ -3,7 +3,7 @@ For analysis of microbial community from the hindguts and faeces of E. pulchripe
 
 
 1_Epibolus_pulchripes_weight_loss_analysis.Rmd
-        1_Epibolus_weight.csv
+                1_Epibolus_weight.csv
         
 
 2_Glomeris_connexa_weight_loss_analysis.Rmd
