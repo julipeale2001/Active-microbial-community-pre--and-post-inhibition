@@ -1,0 +1,413 @@
+---
+title: "16S rRNA Copy Number Analysis for Antibiotics Treated Millipede Microbial Communities"
+subtitle: "Copy Number Analysis"
+author: "Roey Angel"
+date: "`r Sys.Date()`"
+link-citations: yes
+csl: fems-microbiology-ecology.csl
+output:
+  rmarkdown::html_document:
+    toc: true
+    toc_float: true
+    toc_depth: 5
+    keep_md: true
+    number_sections: false
+    highlight: "pygments"
+    theme: "flatly"
+    dev: "png"
+    df_print: "kable"
+    fig_caption: true
+    code_folding: "show"
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r libraries, include=F}
+# Load libraries
+#.libPaths(c('~/R/library', .libPaths())) # Uncomment if you have no write access to R path
+
+repo <- "http://cran.wu.ac.at"
+lib.loc <- Sys.getenv("R_LIBS_USER")
+
+update.packages(
+    lib.loc, 
+    repos = repo,
+    ask = FALSE
+)
+
+.cran_libs <- c(
+  "knitr", # A General-Purpose Package for Dynamic Report Generation in R
+  "kableExtra", # Construct Complex Table with 'kable' and Pipe Syntax
+  "rmarkdown", # Dynamic Documents for R
+  "extrafont", # for extra figure fonts
+  "tidyverse", # for dplyr forcats ggplot2 readr tibble
+  "grid", # The Grid Graphics Package
+  "magrittr", # pipes
+  "scales", # Generic plot scaling methods
+  "svglite", # for svg files
+  "vegan",
+  "patchwork",
+  "car", # Companion to Applied Regression
+  "rcompanion", #Functions to Support Extension Education Program Evaluation
+  "multcomp", # Simultaneous Inference in General Parametric Models 
+  "nlme", # Fit Linear Model Using Generalized Least Squares
+  "ggResidpanel", # Panels and Interactive Versions of Diagnostic Plots using 
+  "lsmeans", # Least-Squares Means
+  "survminer", # For Survival Analysis
+  "ranger",
+  "ggfortify",
+  "gtsummary", 
+   "cmprsk",  # Competing Risks Packages
+  "sm",  # Smooth survival plot - quantile of survival
+  "prodlim",
+  "pec",
+  "performance"
+) 
+
+.inst <- .cran_libs %in% installed.packages()
+if (any(!.inst)) {
+   install.packages(.cran_libs[!.inst],
+                    repos = repo,
+                    lib = lib.loc)
+}
+
+.bioc_libs <- c(
+  #"multtest", #Resampling-based multiple hypothesis testing
+)
+
+.bioc_inst <- .bioc_libs %in% installed.packages()
+if (any(!.bioc_inst)) {
+   if (!requireNamespace("BiocManager", quietly = TRUE))
+   install.packages("BiocManager")
+   BiocManager::install(ask = F, lib = lib.loc)  # upgrade bioC packages
+   BiocManager::install(.bioc_libs[!.bioc_inst], ask = F, lib = lib.loc)
+}
+
+.local_libs <- c()
+
+.inst <- names(.local_libs) %in% installed.packages()
+if (any(!.inst)) {
+   install.packages(paste0("~/R/", .local_libs[!.inst]) ,repos = NULL, type = "source", lib = lib.loc)
+}
+
+.github_libs <- c()
+
+.github_lib_names <- stringr::str_replace(.github_libs, ".*/(.*)$", "\\1")
+
+.github_inst <- .github_lib_names %in% installed.packages()
+if (any(!.github_inst)) {
+  devtools::install_github(.github_libs[!.github_inst],
+                           lib = lib.loc,
+                           dependencies = TRUE)
+}
+
+# Load packages into session, and print package version
+(loaded.libs <- sapply(c(.cran_libs, .bioc_libs, names(.local_libs), .github_lib_names), require, character.only = TRUE))
+if (!all(loaded.libs)) {stop(paste("Package(s):", names(loaded.libs[loaded.libs == FALSE]), "could not be loaded"))}
+sapply(c(.cran_libs, .bioc_libs, names(.local_libs), .github_lib_names), packageVersion)
+```
+
+```{r style settings, include=F}
+options(width = 90, knitr.table.format = "html") 
+opts_chunk$set(
+  warning = FALSE,
+  message = FALSE,
+  cache = TRUE,
+  dev = "svglite",
+  fig.ext = "svg",
+  dpi = 300,
+#  fig.width = 12,
+#  fig.height = 8,
+  cache.path = "Copy_number_cache/",
+  fig.path = "Copy_number_figs/"
+)
+f_name <- "DejaVu Sans" #sub("\\s//", "", f_name)
+f_size <- 14
+font_import(pattern = "DejaVuSans", prompt = FALSE)
+loadfonts() # registers fonts
+theme_set(theme_bw(base_size = f_size, base_family = f_name)) # set theme for plots
+pom4 <- ggpomological:::pomological_palette[c(2, 9, 3, 1)] # set colours
+```
+
+```{r functions, include=F}
+PlotLmResid <- function(lm.df, which = c(1:6), mfrow = c(3, 2)){
+
+  if (length(levels(as.factor(lm.df$.fitted))) < 10) {# if number of unique x values is <10 just draw a line through the means
+    smoother <- stat_summary(fun.y = mean, colour = "red", geom = "line")
+  } else smoother <- stat_smooth(method = "loess", geom = "smooth", se = FALSE, colour = "firebrick", size = 1)
+  
+  # residuals vs fitted
+  g1 <- ggplot(lm.df, aes(.fitted, .resid)) +
+    geom_point()  +
+    smoother + 
+    geom_hline(yintercept = 0, linetype = 2, size = .2) +
+    scale_x_continuous("Fitted Values") +
+    scale_y_continuous("Residual") +
+    labs(title = "Residuals vs Fitted")
+  
+  # normal qq
+  a <- quantile(lm.df$.stdresid, c(0.25, 0.75), na.rm = TRUE)
+  b <- qnorm(c(0.25, 0.75))
+  slope <- diff(a)/diff(b)
+  int <- a[1] - slope * b[1]
+  g2 <- ggplot(lm.df, aes(sample = .stdresid)) +
+    stat_qq() +
+    geom_abline(slope = slope, intercept = int, colour = "firebrick", size = 1) +
+      scale_x_continuous("Theoretical Quantiles") +
+      scale_y_continuous("Standardized Quantiles") +
+      labs(title = "Normal Q-Q")
+ 
+  # scale-location
+  g3 <- ggplot(lm.df, aes(.fitted, sqrt(abs(.stdresid)))) +
+    geom_point() +
+    smoother +
+    scale_x_continuous("Fitted Values") +
+    scale_y_continuous("Root of Standardized Residuals") +
+    labs(title = "Scale-Location")
+ 
+  # residuals vs leverage
+  g4 <- ggplot(lm.df, aes(factors, .stdresid)) +
+    geom_point() +
+    smoother +
+    geom_hline(yintercept = 0, linetype = 2, size = .2) +
+    scale_x_continuous("Factor Level Combinations") +
+    scale_y_continuous("Standardized Residuals") +
+    labs(title = "Residuals vs Factor Levels")
+ 
+#   # cook's distance
+#   g5 <-  ggplot(lm.df, aes(rows, .cooksd, ymin=0, ymax=.cooksd)) +
+#     geom_point() + geom_linerange() +
+#     scale_x_continuous("Observation Number") +
+#     scale_y_continuous("Cook's distance") +
+#     labs(title="Cook's Distance")  
+  
+  # cooksd vs leverage
+  g5 <- ggplot(lm.df, aes(factors, .cooksd)) +
+    geom_point() +
+    smoother +
+    scale_x_continuous("Factor Level Combinations") +
+    scale_y_continuous("Cook's distance") +
+    labs(title = "Cook's dist vs Leverage")
+  
+  # g6 <- PlotACF(lm.df)
+  bw <- diff(range(lm.df$.resid)) / (2 * IQR(lm.df$.resid) / length(lm.df$.resid) ^ (1/3))
+  sshist <- function(x){ # optimise bins
+  # 2006 Author Hideaki Shimazaki
+  # Department of Physics, Kyoto University
+  # shimazaki at ton.scphys.kyoto-u.ac.jp
+	N <- 2 : 100
+	C <- numeric(length(N))
+	D <- C
+
+	for (i in 1:length(N)) {
+		D[i] <- diff(range(x)) / N[i]
+
+		edges = seq(min(x), max(x), length=N[i])
+		hp <- hist(x, breaks = edges, plot=FALSE)
+		ki <- hp$counts
+
+		k <- mean(ki)
+		v <- sum((ki-k) ^ 2) / N[i]
+
+		C[i] <- (2 * k-v) / D[i] ^ 2	#Cost Function
+	}
+
+	idx <- which.min(C)
+	optD <- D[idx]
+
+	bins <- seq(min(x), max(x), length=N[idx])
+	# h = hist(x, breaks = bins)
+	# rug(x)
+
+	return(bins)
+  }
+  
+  bins <- sshist(lm.df$.resid)
+  g6 <- ggplot(lm.df, aes(.resid)) + 
+    geom_histogram(breaks = bins)
+ 
+  plots <- list(g1, g2, g3, g4, g5, g6)
+ 
+  # making the plots
+  grid.newpage()
+ 
+  if (prod(mfrow) > 1) {
+    mypos <- expand.grid(1:mfrow[1], 1:mfrow[2])
+    mypos <- mypos[with(mypos, order(Var1)), ]
+    pushViewport(viewport(layout = grid.layout(mfrow[1], mfrow[2])))
+    formatter <- function(.){}
+  } else {
+    mypos <- data.frame(matrix(1, length(which), 2))
+    pushViewport(viewport(layout = grid.layout(1, 1)))
+    formatter <- function(.) {
+      .dontcare <- readline("Hit <Return> to see next plot: ")
+      grid.newpage()
+    }
+  }
+ 
+  j <- 1
+  for (i in which) {
+    formatter()
+    print(plots[[i]], vp = viewport(layout.pos.row = mypos[j, ][1], layout.pos.col = mypos[j, ][2]))
+    j <- j + 1
+  }
+}
+
+PlotACF <- function(lm.df){
+  ## generate ACF plot for lm and lme
+  # compute acf without plotting
+  acz <- acf(lm.df$.resid, plot = F)
+  # convert to data frame
+  acd <- data.frame(lag = acz$lag, acf = acz$acf)
+  # use data frame for ggplot
+  ggplot(acd, aes(lag, acf)) + 
+    geom_bar(colour = "black", fill = "black", stat = "identity", position = "dodge", width = 0.01) +
+    geom_point(colour = "black") +
+    geom_hline(yintercept = c(0.05, -0.05), linetype = "dashed") +
+    geom_hline(yintercept = 0)
+}
+```
+[julius.nweze@bc.cas.cz](mailto: julius.nweze@bc.cas.cz)  
+
+## 16S Copy Number Analysis
+Analysis of bacterial 16S rRNA copy numbers in response to antibiotics treatment.
+Species tested: *E. pulchripes*
+
+### *E. pulchripes* hindgut bacterial 16S copy analysis
+```{r load hindgut copy number data by Epibolus, cache = T}
+read_csv("9_ddPCR_Copy_Numbers.csv",
+         trim_ws = TRUE,
+         col_names = TRUE) %>% # read the csv file
+  mutate_at(c("Code",
+              "Treatment",
+              "Replicate",
+              "Individual"),
+            ~ (factor(.))) %>% # convert to factor
+     mutate(Treatment = fct_relevel(Treatment, "Control", "Sterile", "Diluted", "Hi_conc."))-> # arrange factor levels 4 plotting
+  ddPCR_copies
+
+```
+
+*Barplot of E. pulchripes hindgut bacterial copy numbers for all replicates*
+```{r plot all hindgut copy numbers by Epibolus, cache=TRUE}
+# Barplot for all total copy numbers
+ggplot(ddPCR_copies, aes(x = Treatment, y = `Total Copy Numbers of 16S rRNA`, fill = Treatment, group = Code)) + 
+  geom_bar(stat = 'identity', position='dodge') +  xlab("Treatment") + scale_y_continuous(label=scientific) +
+  facet_grid(`Sample type` ~ Species , scales = "free")
+
+# Barplot for all 16S rRNA Copies/1 ng DNAs
+ggplot(ddPCR_copies, aes(x = Treatment, y = `16S rRNA Copies/1 ng DNA`, fill = Treatment, group = Code)) + 
+  geom_bar(stat = 'identity', position='dodge') +  xlab("Treatment") + scale_y_continuous(label=scientific) +
+  facet_grid(`Sample type` ~ Species , scales = "free")
+
+```
+
+*Barplot of E. pulchripes hindgut bacterial mean copy numbers**
+```{r plot mean+SE hindgut copy numbers by Epibolus, cache = TRUE}
+# Barplot for mean total copy numbers
+ ddPCR_copies %>%  # the name of the new data frame and the data frame to be summarised
+  drop_na() %>% # drop rows with missing values
+  group_by(Species, Treatment, `Sample type`) %>%   # the grouping variable
+  summarise(`Mean Total Copy Numbers of 16S rRNA` = mean(`Total Copy Numbers of 16S rRNA`),  # calculates the mean of each group
+            StD = sd(`Total Copy Numbers of 16S rRNA`), # calculates the standard deviation of each group
+            n = n(),  # calculates the sample size per group
+            SE = sd(`Total Copy Numbers of 16S rRNA`)/sqrt(n())) -> # calculates the standard error of each group
+ Total_mean
+
+# Create plot
+ggplot(Total_mean, aes(x = Treatment, y = `Mean Total Copy Numbers of 16S rRNA`)) + 
+  geom_bar(stat = 'identity', position='dodge', aes(fill=Treatment)) +
+  geom_errorbar(aes(ymin = `Mean Total Copy Numbers of 16S rRNA` - SE, ymax = `Mean Total Copy Numbers of 16S rRNA` + SE), width=.2,
+                 position=position_dodge(.9)) + scale_y_continuous(label=scientific) +
+  facet_grid(`Sample type` ~ Species , scales = "free")
+
+ # fill = pom4, 
+
+# Barplot for mean 16S rRNA Copies/1 ng DNA
+ddPCR_copies %>%  # the name of the new data frame and the data frame to be summarised
+  drop_na() %>% # drop rows with missing values
+  group_by(Treatment) %>%   # the grouping variable
+  summarise(`Mean 16S rRNA Copies/1 ng DNA` = mean(`16S rRNA Copies/1 ng DNA`),  # calculates the mean of each group
+            StD = sd(`16S rRNA Copies/1 ng DNA`), # calculates the standard deviation of each group
+            n = n(),  # calculates the sample size per group
+            SE = sd(`16S rRNA Copies/1 ng DNA`)/sqrt(n())) -> # calculates the standard error of each group
+  DNA_mean
+
+
+# Create plot
+ggplot(DNA_mean, aes(x = Treatment, y = `Mean 16S rRNA Copies/1 ng DNA`)) + 
+  geom_bar(stat = 'identity', position='dodge', fill = pom4, aes(fill=Treatment)) +
+  geom_errorbar(aes(ymin = `Mean 16S rRNA Copies/1 ng DNA` - SE, ymax = `Mean 16S rRNA Copies/1 ng DNA` + SE), width=.2,
+                 position=position_dodge(.9)) + scale_y_continuous(label=scientific)
+```
+
+#### Anova tests
+**Compare Epibolus hindgut bacterial 16S copy numbers between groups**
+```{r  hindgut copy number aov by Epibolus, cache=T}
+# ANOVA for total copy numbers
+ddPCR_copies %>% 
+  filter(Species == "E. pulchripes") %>% 
+  aov(`Total Copy Numbers of 16S rRNA` ~ Treatment, .) -> # fit an anova model
+  aov_total
+  
+print(Anova(aov_total)) # print results
+
+aov_total_df <- fortify(aov_total) # make a data frame for plotting
+factor.combinations <-
+  as.numeric(factor(aov_total_df$Treatment),
+             levels = unique(as.character(paste(aov_total_df$Treatment)))
+  ) # needed for "residuals vs leverage
+mod_data_df_total <-
+  cbind(aov_total_df,
+        rows = 1:nrow(aov_total_df),
+        factors = factor.combinations)
+
+PlotLmResid(mod_data_df_total) # plot residuals
+check_model(aov_total)
+
+emm_mod <- emmeans(aov_total, as.formula(paste("", "Treatment", sep = " ~ ")), weights = "equal")
+# Contrasts, pairwise comparisons, tests, and confidence intervals.
+emm_mod_cons <- contrast(emm_mod, method = "pairwise", adjust = "BH")
+print(emm_mod_cons)
+
+
+ddPCR_copies %>% 
+  filter(Species == "E. pulchripes") %>% 
+  aov(log2(`Total Copy Numbers of 16S rRNA`) ~ Treatment, .) -> # fit an anova model
+  aov_total_log
+print(Anova(aov_total_log)) # print results
+
+aov_total_log_df <- fortify(aov_total_log) # make a data frame for plotting
+factor.combinations <-
+  as.numeric(factor(aov_total_log_df$Treatment),
+             levels = unique(as.character(paste(aov_total_log_df$Treatment)))
+  ) # needed for "residuals vs leverage
+mod_data_df_total_log <-
+  cbind(aov_total_log_df,
+        rows = 1:nrow(aov_total_log_df),
+        factors = factor.combinations)
+
+PlotLmResid(mod_data_df_total_log) # plot residuals
+check_model(aov_total_log)
+
+emm_mod <- emmeans(aov_total_log, as.formula(paste("", "Treatment", sep = " ~ ")), weights = "equal")
+# Contrasts, pairwise comparisons, tests, and confidence intervals.
+emm_mod_cons <- contrast(emm_mod, method = "pairwise", adjust = "BH")
+print(emm_mod_cons)
+
+
+
+```
+1. The ANOVA model indicates a significant different in the total copy numbers.
+2. The ANOVA model indicates a significant different in the 16S rRNA Copies/1 ng DNA.
+
+
+**Post-hoc tests for E. pulchripes hindgut bacterial 16S copy numbers between groups**
+```{r  hindgut copy number post-hoc by Epibolus, cache=T}
+# Post-hoc tests for total copy numbers
+TukeyHSD(aov_total) # Compute Tukey Honest Significant Differences
+```
+Pairs: 
+1. There are significant differences between: 2X Diluted-Sterile and Undiluted-Sterile only in the total copy numbers.
+2. There are significant differences between: Undiluted-Control, Undiluted-Sterile, and 2X Diluted-Sterile in the 16S rRNA Copies/1 ng DNA.
+3. There are no significant differences in the 16S rRNA Copies/mg sample weight.

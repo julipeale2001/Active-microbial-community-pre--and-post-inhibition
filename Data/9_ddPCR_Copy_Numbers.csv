@@ -1,0 +1,49 @@
+Sample,Sample name,Species,Code,Sample type, Total Copy Numbers of 16S rRNA,16S rRNA Copies/1 ng DNA,16S rRNA Copies/mg sample weight,Treatment,Replicate,Individual
+Hg-E1C_S90,EP 1C_hg,E. pulchripes,CMG,Hindgut,952000,64600,1570,Control,1,1
+Hg-E1G_S91,EP 1G_hg,E. pulchripes,CMG,Hindgut,2480000,84500,1670,Control,2,2
+Hg-E1H_S92,EP 1H_hg,E. pulchripes,CMG,Hindgut,423000,74000,2170,Control,3,3
+Hg-E2A_S93,EP 2A_hg,E. pulchripes,SFMG,Hindgut,5030000,84800,1650,Sterile,1,4
+Hg-E2D_S94,EP 2D_hg,E. pulchripes,SFMG,Hindgut,1830000,93500,1740,Sterile,2,5
+Hg-E2H_S95,EP 2H_hg,E. pulchripes,SFMG,Hindgut,4370000,81600,2680,Sterile,3,6
+Hg-E3D_S97,EP 3D_hg,E. pulchripes,UAMG,Hindgut,733000,17100,344,Hi_conc.,1,7
+Hg-E3E_S98,EP 3E_hg,E. pulchripes,UAMG,Hindgut,502000,50200,985,Hi_conc.,2,8
+Hg-E3J_S99,EP 3J_hg,E. pulchripes,UAMG,Hindgut,635000,48400,1290,Hi_conc.,3,9
+Hg-E4B1_S100,EP 4B1_hg,E. pulchripes,2X-DAMG,Hindgut,124000,47600,1210,Diluted,1,10
+Hg-E4B2_S101,EP 4B2_hg,E. pulchripes,2X-DAMG,Hindgut,109000,61700,1570,Diluted,2,11
+Hg-E4C_S102,EP 4C_hg,E. pulchripes,2X-DAMG,Hindgut,526000,32100,683,Diluted,3,12
+Hg-G1D_S104,GC 1D_hg,G. connexa ,CMG,Hindgut,34500,1390,1140,Control,1,1
+Hg-G1H_S105,GC 1H_hg,G. connexa ,CMG,Hindgut,3840,1390,1170,Control,2,2
+Hg-G1i_S106,GC 1i_hg,G. connexa ,CMG,Hindgut,36100,8820,7410,Control,3,3
+Hg-G2B_S107,GC 2B_hg,G. connexa ,SFMG,Hindgut,11700,30000,78900,Sterile,1,4
+Hg-G2D_S108,GC 2D_hg,G. connexa ,SFMG,Hindgut,66100,9500,10900,Sterile,2,5
+Hg-G2F_S109,GC 2F_hg,G. connexa ,SFMG,Hindgut,379000,50600,50100,Sterile,3,6
+Hg-G3B_S111,GC 3B_hg,G. connexa ,2X-DAMG,Hindgut,2690,492,460,Hi_conc.,1,7
+Hg-G3C_S112,GC 3C_hg,G. connexa ,2X-DAMG,Hindgut,173,49.5,43,Hi_conc.,2,8
+Hg-G3F_S113,GC 3F_hg,G. connexa ,2X-DAMG,Hindgut,73.7,1360,1210,Hi_conc.,3,9
+Hg-G4F_S114,GC 4F_hg,G. connexa ,5X-DAMG,Hindgut,28300,1630,953,Diluted,1,10
+Hg-G4H_S115,GC 4H_hg,G. connexa ,5X-DAMG,Hindgut,12700,1910,1260,Diluted,2,11
+Hg-G4J_S116,GC 4J_hg,G. connexa ,5X-DAMG,Hindgut,90.2,14,8.12,Diluted,3,12
+Fp-E1G_S117,EP 1G_ex,E. pulchripes,CMG,Faecal pellets,33600000,536000,179000,Control,1,1
+Fp-E1H_S118,EP 1H_ex,E. pulchripes,CMG,Faecal pellets,91700000,1380000,404000,Control,2,2
+Fp-E1J_S119,EP 1C_ex,E. pulchripes,CMG,Faecal pellets,40700000,653000,172000,Control,3,3
+Fp-E2A_S120,EP 2A_ex,E. pulchripes,SFMG,Faecal pellets,42200000,785000,1960000,Sterile,1,4
+Fp-E2D_S121,EP 2D_ex,E. pulchripes,SFMG,Faecal pellets,18700000,341000,100000,Sterile,2,5
+Fp-E2H_S122,EP 2H_ex,E. pulchripes,SFMG,Faecal pellets,4190000,257000,429000,Sterile,3,6
+Fp-E3B_S124,EP 3D_ex,E. pulchripes,UAMG,Faecal pellets,24700000,458000,254000,Hi_conc.,1,7
+Fp-E3E_S125,EP 3E_ex,E. pulchripes,UAMG,Faecal pellets,11500000,233000,583000,Hi_conc.,2,8
+Fp-E3J_S126,EP 3J_ex,E. pulchripes,UAMG,Faecal pellets,1350000,79100,132000,Hi_conc.,3,9
+Fp-E4C_S127,EP 4B_ex,E. pulchripes,2X-DAMG,Faecal pellets,4740000,261000,261000,Diluted,1,10
+Fp-E4B_S128,EP 4C_ex,E. pulchripes,2X-DAMG,Faecal pellets,36300000,568000,710000,Diluted,2,11
+Fp-E4E_S129,EP 4E_ex,E. pulchripes,2X-DAMG,Faecal pellets,4270000,197000,985000,Diluted,3,12
+Fp-G1D_S131,GC 1D_ex,G. connexa ,CMG,Faecal pellets,5440000,219000,547000,Control,1,1
+Fp-G1H_S132,GC 1H_ex,G. connexa ,CMG,Faecal pellets,11000000,278000,696000,Control,2,2
+Fp-G1I_S133,GC 1i_ex,G. connexa ,CMG,Faecal pellets,4270000,128000,321000,Control,3,3
+Fp-G2B_S134,GC 2B_ex,G. connexa ,SFMG,Faecal pellets,521000,38600,96500,Sterile,1,4
+Fp-G2D_S135,GC 2D_ex,G. connexa ,SFMG,Faecal pellets,1950000,189000,473000,Sterile,2,5
+Fp-G2F_S136,GC 2F_ex,G. connexa ,SFMG,Faecal pellets,2980000,185000,462000,Sterile,3,6
+Fp-G3B_S138,GC 3B_ex,G. connexa ,2X-DAMG,Faecal pellets,4260000,152000,379000,Hi_conc.,1,7
+Fp-G3F_S139,GC 3F_ex,G. connexa ,2X-DAMG,Faecal pellets,3770000,109000,273000,Hi_conc.,2,8
+Fp-G3G_S140,GC 3G_ex,G. connexa ,2X-DAMG,Faecal pellets,3680000,110000,275000,Hi_conc.,3,9
+Fp-G4F_S141,GC 4F_ex,G. connexa ,5X-DAMG,Faecal pellets,9720000,208000,520000,Diluted,1,10
+Fp-G4H_S142,GC 4H_ex,G. connexa ,5X-DAMG,Faecal pellets,1380000,41900,105000,Diluted,2,11
+Fp-G4J_S143,GC 4J_ex,G. connexa ,5X-DAMG,Faecal pellets,2520000,96700,242000,Diluted,3,12
