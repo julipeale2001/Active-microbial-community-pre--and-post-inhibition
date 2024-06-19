@@ -68,6 +68,7 @@ update.packages(
   "randomForest",
   "ggrepel",
   "dunn.test",
+  "pairwiseAdonis",
   "reshape2",
   "devtools", 
   "PMA", 
@@ -164,6 +165,7 @@ PlotLibDist <- function(physeq) {
     # scale_fill_locuszoom() +
     facet_grid(Climate ~ .)
 }
+
 
 PlotReadHist <- function(OTUmat, b.width = 10) {
   OTUmat %>%
@@ -692,6 +694,70 @@ gz <- function(in_path, out_path = tempfile()) {
   invisible(out_path)
 }
 
+
+
+# pairwise_adonis
+pairwise_adonis <- function(x, factors, sim.function = "vegdist", sim.method = "horn", 
+                           p.adjust.m = "BH", reduce = NULL) 
+{
+  require(vegan)
+  # Taken from: https://github.com/pmartinezarbizu/pairwiseAdonis
+  co <- combn(unique(as.character(factors)), 2)
+  pairs <- c()
+  total.DF <- c()
+  F.Model <- c()
+  R2 <- c()
+  p.value <- c()
+  for (elem in 1:ncol(co)) {
+    
+    if (sim.function == "daisy") {
+      x1 = daisy(x[factors %in% c(co[1, elem], co[2, elem]), ],
+                 metric = sim.method)
+    } else {
+      x1 = vegdist(x[factors %in% c(co[1, elem], co[2, elem]), ],
+                   method = sim.method)
+    }
+    ad <- adonis2(x1 ~ fct, 
+                  data = data.frame(fct = factors[factors %in% c(co[1, elem], 
+                                                                 co[2, elem])]),
+                  permutations = 999)
+    # ad <- adonis(x1 ~ factors[factors %in% c(co[1, elem], 
+    #     co[2, elem])], permutations = 999) # fails in vegan 2.5-7
+    # ad1 <- adonis(x[factors %in% c(co[1, elem], co[2, elem]), ] ~ fct,
+    #               data = data.frame(fct = factors[factors %in% c(co[1, elem],
+    #                                                         co[2, elem])]),
+    #               method="horn",
+    #               permutations = 999)
+    
+    pairs <- c(pairs, paste(co[1, elem], "vs", co[2, elem]))
+    # total.DF <- c(total.DF, ad$aov.tab["Total", 1]) # fails in vegan 2.5-7
+    total.DF <- c(total.DF, ad["Total", "Df"])
+    F.Model <- c(F.Model, ad[1, "F"])
+    R2 <- c(R2, ad[1, "R2"])
+    p.value <- c(p.value, ad[1, "Pr(>F)"])
+  }
+  p.adjusted <- p.adjust(p.value, method = p.adjust.m)
+  sig = c(rep("", length(p.adjusted)))
+  sig[p.adjusted <= 0.05] <- "."
+  sig[p.adjusted <= 0.01] <- "*"
+  sig[p.adjusted <= 0.001] <- "**"
+  sig[p.adjusted <= 1e-04] <- "***"
+  pairw.res <- data.frame(pairs, total.DF, F.Model, R2, p.value, 
+                          p.adjusted, sig)
+  if (!is.null(reduce)) {
+    pairw.res <- subset(pairw.res, grepl(reduce, pairs))
+    pairw.res$p.adjusted <- p.adjust(pairw.res$p.value, method = p.adjust.m)
+    sig = c(rep("", length(pairw.res$p.adjusted)))
+    sig[pairw.res$p.adjusted <= 0.05] <- "."
+    sig[pairw.res$p.adjusted <= 0.01] <- "*"
+    sig[pairw.res$p.adjusted <= 0.001] <- "**"
+    sig[pairw.res$p.adjusted <= 1e-04] <- "***"
+    pairw.res <- data.frame(pairw.res[, 1:5], sig)
+  }
+  class(pairw.res) <- c("pwadonis", "data.frame")
+  return(pairw.res)
+}
+
 ```
 
 
@@ -918,7 +984,19 @@ Epi_hindgut.rel <- microbiome::transform(Epi_hindgut2, "compositional")
 
 Epi_hindgut.ord_pcoa_bray <- ordinate(Epi_hindgut.rel, "CAP", "bray", formula =  ~ Treatment) # Produce uncorrelated data
 
-# Scree plot
+# we test the impact of the treatment 
+set.seed(10000)
+anova(Epi_hindgut.ord_pcoa_bray, by="terms" , permu=999)
+
+# testing various factors (increase the permutation for real data)
+anova(Epi_hindgut.ord_pcoa_bray)
+
+# calculate R squared values
+
+RsquareAdj (Epi_hindgut.ord_pcoa_bray)
+
+
+# # chech which axis are explaining how mauch variation
 plot_scree(Epi_hindgut.ord_pcoa_bray) + theme_bw() # Axis 1 and 2 are of interest.
 # A scree plot is an important tool for any ordination method, as the relative importance of axes can vary widely from one dataset to another.
 
@@ -942,23 +1020,24 @@ ggsave("Epi_hindgut_CAP.svg",width = 30, height = 20, units = "cm")
 # 2. The Jaccard distance is based on the presence or absence of species (does not include abundance information). Values are from 0 to 1. A value of 0 means both samples share the exact same species and a value of 1 means both samples have no species in common.
 # 3. Bray-Curtis - takes abundance into account; non-phylogeny based. Values are from 0 to 1. A value of 0 means that two samples share the same species at the exact same abundances. A value of 1 means two samples have completely different species abundances.
 ```
-This ordination plot shows that axis 1 explains 27 % of the variation among the treatments. The Control and Sterile-fed tend to be ordinated closer together, showing smaller dissimilarity. The two antibiotic treatments are ordinated together and a bit far from the other treatment groups. The sterile group is closer to the Antibiotic-treated groups than the Control.
+This ordination plot shows that axis 1 explains 24.7 % of the variation among the treatments. The Control and Sterile-fed tend to be ordinated closer together, showing smaller dissimilarity. The two antibiotic treatments are ordinated together and a bit far from the other treatment groups. The sterile group is closer to the Antibiotic-treated groups than the Control.
 
 
 # *Permanova for beta diversity*
 Run a permanova test using the adonis function in vegan to test the hypothesis that the treatment samples have different microbial communities
 ```{r Epibolus hindgut Permanova for beta diversity, cache = T}
+set.seed(10000)
 # Calculate bray curtis distance matrix
-erie_bray <- phyloseq::distance(Epi_hindgut2, method = "bray", formula =  ~ Treatment)
+Epi_hindgut_erie_bray <- phyloseq::distance(Epi_hindgut2, method = "bray", formula =  ~ Treatment)
 
 # make a data frame from the sample_data
 sampledf <- data.frame(sample_data(Epi_hindgut2))
 
 # Adonis test
-adonis2(erie_bray ~ Treatment, data = sampledf)
+adonis2(Epi_hindgut_erie_bray ~ Treatment, data = sampledf)
     
 # Homogeneity of dispersion test
-beta <- betadisper(erie_bray, sampledf$Treatment)
+beta <- betadisper(Epi_hindgut_erie_bray, sampledf$Treatment)
 permutest(beta)
 par(mfrow=c(1,1))
 plot(beta,
@@ -966,6 +1045,82 @@ plot(beta,
 boxplot(beta, xlab = "", las = 2, cex.axis = 0.8)
 anova(beta)
 TukeyHSD(beta)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# Since, there is no phylogenetic tree for this data set, Bray-Curtis distance will be calculated.
+Epi_hindgut.rel <- microbiome::transform(Epi_hindgut2, "compositional")
+
+Epi_hindgut.ord_pcoa_bray <- ordinate(Epi_hindgut2, "CAP", "bray", formula =  ~ Treatment) # Produce uncorrelated data
+
+# we test the impact of the treatment 
+
+(mod1 <- adonis2(phyloseq::distance(Epi_hindgut2, method = "bray") ~ Treatment,
+  data = get_variable(Epi_hindgut2),
+  permutations = 9999
+))
+
+mod_final_pairwise_all <- pairwise_adonis(
+  t(otu_table(Epi_hindgut2)),
+  sample_data(Epi_hindgut2)$Treatment,
+  # pull(Ps_obj_median, Var3.Var4),
+  sim.function = "vegdist",
+  sim.method = "bray",
+  p.adjust.m = "BH"
+)
+print(mod_final_pairwise_all)
+
+
+
+
+
+
+
+set.seed(10000)
+anova(Epi_hindgut.ord_pcoa_bray, by="terms" , permu=999)
+
+# testing various treatnets (increase the permutation for real data)
+anova(Epi_hindgut.ord_pcoa_bray)
+
+
+
+
+# First: Define pairwise comparisons (using preformed script)
+pairwise_adonis(x = t(otu_table(Epi_hindgut2)), factor = get_variable(Epi_hindgut2, "Treatment"), sim.function = "vegdist", sim.method = "bray",  p.adjust.m = "BH")
+
+
+
+
+# Second: test comparisons http://www.hiercourse.com/docs/microbial/04_betaDiversity_multTables.html
+pairwise.adonis2(dist(t(otu_table(Epi_hindgut2)), method = 'euclidean') ~ Treatment, data = sampledf, strata='Sample.name')
+
+
+
+
+# Third https://github.com/pmartinezarbizu/pairwiseAdonis
+Epi_hindgut.rel <- microbiome::transform(Epi_hindgut2, "compositional")
+
+ps_dist_matrix <- phyloseq::distance(Epi_hindgut2, method ="bray")
+
+vegan::adonis2(ps_dist_matrix ~ phyloseq::sample_data(Epi_hindgut.rel)$Treatment)
+
+pairwise.adonis(ps_dist_matrix, phyloseq::sample_data(Epi_hindgut.rel)$Treatment)
+
 ```
 This output tells us that our adonis test is significant so we can reject the null hypothesis that our the treatment samples have same microbial communities. Additionally, our betadisper results are significant, meaning we reject the null hypothesis that our treatments have the same dispersions. This means we can be less confident that our adonis result is a real result due to the differences in group dispersions.
 
