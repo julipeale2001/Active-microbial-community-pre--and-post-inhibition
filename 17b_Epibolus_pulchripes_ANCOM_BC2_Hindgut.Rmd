@@ -48,6 +48,7 @@ update.packages(
   "tidyverse", # for dplyr forcats ggplot2 readr tibble
   "grid", # The Grid Graphics Package
   "magrittr", # pipes
+  "ALDEx2", # ANOVA-like differential expression
   "scales", # Generic plot scaling methods
   "svglite", # for svg files
   "vegan",  # Ordination methods, diversity analysis and other functions for community and vegetation ecologists
@@ -80,6 +81,7 @@ update.packages(
   "intergraph",
   "DT", 
   "scales",
+  "DESeq2",
   "mia",
   "microbiome",
   "ggpubr",
@@ -179,6 +181,7 @@ pom2 <- c(ggpomological:::pomological_base[[7]], ggpomological:::pomological_pal
 ```
 
 ```{r functions, include=F}
+
 #' Filter ASVs by Count and Presence in a Phyloseq Object
 #' Filter ASVs by count number and presence in a phyloseq object based on specified thresholds.
 #'
@@ -239,6 +242,402 @@ filter_ASVs_by_prevalence <- function (ps_obj, abund_thresh = 10, prev_thresh = 
   return(ps_obj)
 }
 
+
+
+
+
+#' @examples
+#'  # Check out the vignette phyloseq-mixture-models for more details.
+#'  # vignette("phyloseq-mixture-models")
+#'  data(soilrep)
+#'  phyloseq_to_deseq2(soilrep, ~warmed)
+phyloseq_to_deseq2 = function(physeq, design, ...){
+  # Need to add check here for missing sample_data
+  if( is.null(sample_data(physeq, FALSE)) ){
+    stop("There must be sample_data present, for specifying experimental design. See ?phyloseq_to_deseq2")
+  }
+  # Enforce orientation. Samples are columns
+  if( !taxa_are_rows(physeq) ){ physeq <- t(physeq)}
+  # Coerce count data to vanilla matrix of integers
+  countData = round(as(otu_table(physeq), "matrix"), digits=0)
+  colData = data.frame(sample_data(physeq))
+  # Create the DESeq data set, dds.
+  if(requireNamespace("DESeq2")){
+    dds <- DESeq2::DESeqDataSetFromMatrix(countData, colData, design, ...)
+    return(dds)
+  }
+}
+```
+
+```{r functions, include=F}
+
+DropRareSpecies <-
+  function(Ps_obj = Ps_obj_subset,
+           prevalence = 0.1) {
+    prevdf <- apply(
+      X = otu_table(Ps_obj),
+      MARGIN = ifelse(taxa_are_rows(Ps_obj), yes = 1, no = 2),
+      FUN = function(x) {
+        sum(x > 0)
+      }
+    )
+    # Add taxonomy and total read counts to this data.frame
+    prevdf <- data.frame(Prevalence = prevdf,
+                         TotalAbundance = taxa_sums(Ps_obj),
+                         tax_table(Ps_obj))
+    
+    # Define prevalence threshold as 0.X of total samples
+    prevalenceThreshold <- prevalence * nsamples(Ps_obj)
+    prevalenceThreshold
+    
+    # Execute prevalence filter, using `prune_taxa()` function
+    prevdf_phylum_filt <-
+      subset(prevdf,
+             Phylum %in% get_taxa_unique(Ps_obj, "Phylum"))
+    keepTaxa <-
+      row.names(prevdf_phylum_filt)[(prevdf_phylum_filt$Prevalence >= prevalenceThreshold)]
+    Ps_obj_small <- prune_taxa(keepTaxa, Ps_obj)
+    sample_data(Ps_obj_small)$Lib.size <-
+      rowSums(otu_table(Ps_obj_small))
+    print(Ps_obj)
+    print(Ps_obj_small)
+    return(Ps_obj_small)
+  }
+
+calc_ALDEx2 <-
+  function(physeq_obj = Ps_obj_filt_subset,
+           vars2test = "Spill.Treatment",
+           rare_phyla = Rare_phyla,
+           sig_level = 0.05,
+           LFC = 0.322,
+           ...) {
+    require(phyloseq)
+    require(speedyseq)
+    require(ALDEx2)
+    physeq_obj <- filter_taxa(physeq_obj, function(x)
+      sum(x) > 0, TRUE)
+    # physeq_obj <- prune_taxa(sig_taxa, physeq_obj) # remove taxa not significant under the full model
+    data2test <- otu_table(physeq_obj)
+    comparison <- as.character(get_variable(physeq_obj, vars2test))
+    ALDEx <- aldex.clr(
+      data2test,
+      comparison,
+      mc.samples = 128,
+      denom = "iqlr",
+      # iqlr for slight assymetry in composition
+      verbose = TRUE,
+      useMC = TRUE
+    )
+    ALDEx_tt <-
+      aldex.ttest(ALDEx, paired.test = FALSE, verbose = TRUE) # for two conditions
+    ALDEx_effect <- aldex.effect(
+      ALDEx,
+      include.sample.summary = TRUE,
+      verbose = TRUE,
+      useMC = TRUE
+    ) # estimate effect sizes
+    ALDEx2plot <-
+      prep_AlDEx_data(ALDEx_tt,
+                    ALDEx_effect,
+                    physeq_obj,
+                    sig_level,
+                    LFC,
+                    Taxa_rank,
+                    rare_phyla)
+    return(ALDEx2plot)
+  }
+
+prep_AlDEx_data <-
+  function(ALDEx_tt,
+           ALDEx_effect,
+           physeq_obj = Ps_obj_filt_subset,
+           sig_level,
+           LFC,
+           Taxa_rank,
+           rare_phyla,
+           ...) {
+    ALDEx2plot <- data.frame(ALDEx_tt, ALDEx_effect) # merge results
+    # group dataframe by OTU, calculate median rel. abundance
+    physeq_obj %>%
+      transform_sample_counts(., function(x)
+        x / sum(x) * 100) %>%
+      psmelt() %>%
+      group_by(OTU) %>%
+      # filter(OTU %in% sig_taxa) %>%
+      summarise(baseMean = mean(Abundance)) ->
+      baseMean
+    
+    ALDEx2plot$OTU <- rownames(ALDEx2plot)
+    ALDEx2plot %<>% left_join(., baseMean, by = "OTU") # add mean abundance to results table
+    ALDEx2plot %<>% cbind(., tax_table(physeq_obj)[taxa_names(physeq_obj) %in% ALDEx2plot$OTU, ], stringsAsFactors = FALSE) # add taxonomy
+    # change their name to "Rare"
+    
+    ALDEx2plot[ALDEx2plot$Phylum %in% rare_phyla, ]$Phylum <-
+      'Rare' # rare_phyla is calcuted for the taxa box plots
+    ALDEx2plot$Significance <-
+      factor("Fail", levels = c("Fail", "Pass")) # define significance factor
+    ALDEx2plot$Significance[ALDEx2plot$wi.eBH < sig_level &
+                              !is.na(ALDEx2plot$wi.eBH) &
+                              abs(ALDEx2plot$effect) > LFC] <-
+      "Pass"
+    # ALDEx2plot$Significance <- as.factor(sapply(ALDEx2plot$wi.eBH, function(x) if (is.na(x) | x > 0.05) {x <- "Fail"} else {x <- "Pass"}))
+    # Rank by taxa abundance
+    ALDEx2plot$Phylum %<>%
+      factor(., levels = Taxa_rank$Phylum) %>%  # Taxa_rank is calcuted for the taxa box plots
+      fct_relevel(., "Rare", after = Inf)
+    return(ALDEx2plot)
+  }
+
+plot_ALDEx_tax <-
+  function(ALDEx2plot,
+           OTU_labels = FALSE,
+           Taxa = "Phylum",
+           Y_val = "effect",
+           sig_level = 0.1) {
+    pos <- position_jitter(width = 0.3, seed = 1)
+    p <-
+      ggplot(ALDEx2plot) +
+      geom_point(
+        aes_string(
+          x = Taxa,
+          y = Y_val,
+          colour = "Significance",
+          size = "baseMean"
+        ),
+        position = pos,
+        alpha = 2 / 3,
+        stroke = 0
+      ) +
+      xlab("") +
+      ylab(expression(paste("Effect size (lo", g[2], " fold change)"))) +
+      # ylab("Fold change") +
+      labs(colour = paste("Significance at \n p <", sig_level),
+           size = "Mean count (%)") +
+      theme_grey(base_size = 18,  base_family = f_name) +
+      theme(axis.text.x = element_text(
+        angle = 45.0,
+        vjust = 1,
+        hjust = 1
+      )) +
+      guides(colour = guide_legend(override.aes = list(size = 5))) +
+      scale_colour_manual(
+        values = c(
+          ggpomological:::pomological_base[[7]],
+          ggpomological:::pomological_palette[[1]]
+        )
+      ) +
+      scale_size_continuous(range = c(1, 5), breaks = c(1, 2.5, 5, 10))
+    
+    if (OTU_labels) {
+      p <- p + geom_label_repel(
+        aes_string(x = Taxa, y = Y_val),
+        size = 6,
+        label = sub("Seq_([0-9]+)", "\\1", ALDEx2plot[ALDEx2plot$Significance == "Pass", "OTU"]),
+        position = pos,
+        data = ALDEx2plot[ALDEx2plot$Significance == "Pass", ],
+        # nudge_x = 0.4,
+        colour = "#4a4a4a",
+        label.size = NA,
+        alpha = 0.75,
+        # fontface = 'bold',
+        box.padding = 0.80,
+        point.padding = 0.5
+        
+      )
+    }
+    return(p)
+  }
+
+plot_single_ASV <- function(physeq_obj = Ps_obj_filt_New_Oil_Control, vars2test = "Spill.Treatment", OTU_name = "Seq_8"){
+  # adapted from https://link.springer.com/protocol/10.1007%2F978-1-4939-8728-3_10
+  require("phyloseq")
+  require("ggplot2")
+  require("ggpomological")
+  # Get Proportion transform
+  otuRA <- transform_sample_counts(physeq_obj, function(x) x/sum(x))
+  gtab <- tibble(
+    Count = get_sample(physeq_obj, i = OTU_name),
+    Proportion = get_sample(otuRA, i = OTU_name),
+    SAMPLE_ID = unlist(get_variable(physeq_obj, "Joint.sample.name")),
+    TREATMENT = get_variable(physeq_obj, vars2test)
+  )
+  suppressWarnings({
+    mgtab <- gather(
+      gtab,
+      "Count", "Proportion",
+      key = "Type",
+      value = "Abundance",
+    )
+  })
+  # detect if pairs are both zero
+  mgtab %<>% group_by(SAMPLE_ID) %>% mutate(., BothZero := all(Abundance == 0))
+  
+  # Create a dummy min-value for display
+  mgtab %<>% group_by(Type) %>% mutate(Zero = min(Abundance[(Abundance > 0.0)], na.rm = TRUE)/10)
+  mgtab %<>% group_by(SAMPLE_ID) %>% mutate(Abundance = replace(Abundance, Abundance == 0.0, Zero[Abundance == 0.0]))
+
+  
+  pointSize <- 3
+  p <- ggplot(data = mgtab,
+             mapping = aes(
+               x = TREATMENT, 
+               y = Abundance,
+               color = TREATMENT,
+               shape = TREATMENT)) + 
+    facet_wrap(~Type, scales = "free_y") +
+    # Not both zero
+    geom_point(
+      data = filter(mgtab, BothZero == FALSE),
+      size = pointSize, 
+      alpha = 0.8) +
+    # Both Zero
+    geom_point(
+      data = filter(mgtab, BothZero == TRUE),
+      size = pointSize, 
+      alpha = 0.8,
+      position = position_jitter(width = 0.2, height = 0)) + 
+    geom_path(
+      data = filter(mgtab, BothZero == FALSE),
+      mapping = aes(group = SAMPLE_ID), 
+      color = "darkgray", 
+      size = 0.25,
+      position = position_jitter(width = 0, height = 0.001)) + 
+    geom_text(mapping = aes(label = SAMPLE_ID),
+              data = filter(mgtab, TREATMENT == levels(gtab$TREATMENT)[1] & Abundance > Zero),
+              color = "black",
+              size = 2,
+              nudge_x = -0.15) +
+    scale_colour_manual(values = pom2) +
+    # scale_y_sqrt() +
+    scale_y_log10() +
+    theme_bw() + 
+    theme(text = element_text(size = f_size),
+          legend.position = "none") +
+    scale_size_continuous(range = c(2, 5))
+    # ggtitle(paste("Abundance plot for OTU", OTU))
+  return(p)
+}
+
+plot_top_ASVs <-
+  function(physeq_obj = Ps_obj_filt_subset_New_Oil_Control,
+           ALDEx_obj = ALDEx2plot_New_Oil_Control,
+           vars2test = "Spill.Treatment",
+           rank_by = effect,
+           Ntop = 12) {
+    # adapted from https://link.springer.com/protocol/10.1007%2F978-1-4939-8728-3_10
+    require("phyloseq")
+    require("ggplot2")
+    require("ggpomological")
+    
+    # Rank OTUs according to rank_by
+    quo_rank_by = enquo(rank_by)
+    ALDEx_obj %>%
+      filter(Significance == "Pass") %>%
+      select(OTU, Phylum, baseMean, effect) %>%
+      arrange(desc(abs(!!quo_rank_by))) -> OTU_rank
+    if (nrow(OTU_rank) < Ntop)
+      Ntop <- nrow(OTU_rank)
+    OTU_rank %>% .[1:Ntop, ] %>% pull(OTU) -> OTU_names
+    
+    # Get rel. abund. transform
+    otuRA <-
+      transform_sample_counts(physeq_obj, function(x)
+        x / sum(x) * 100)
+    
+    if (is.na(OTU_names[1]) | is.null(OTU_names[1])) {
+      message("No significant differentially abundant OTUs to display")
+    } else {
+      if (length(OTU_names) == 1) {
+        gtab <- tibble(
+          OTU =  as_factor(OTU_names),
+          # Count = gather(as_tibble(get_sample(physeq_obj, i = OTU_names)))$value,
+          Rel_abundance = gather(as_tibble(get_sample(otuRA, i = OTU_names)))$value,
+          SAMPLE_ID = as_factor(rep(unlist(
+            get_variable(otuRA, "Joint.sample.name")
+          ), Ntop)),
+          TREATMENT = as_factor(rep(
+            get_variable(otuRA, vars2test), Ntop
+          ))
+        )
+      } else {
+        gtab <- tibble(
+          OTU =  as_factor(gather(as_tibble(
+            get_sample(otuRA, i =
+                         OTU_names)
+          ))$key),
+          # Count = gather(as_tibble(get_sample(otuRA, i = OTU_names)))$value,
+          Rel_abundance = gather(as_tibble(get_sample(otuRA, i = OTU_names)))$value,
+          SAMPLE_ID = as_factor(rep(unlist(
+            get_variable(otuRA, "Joint.sample.name")
+          ), Ntop)),
+          TREATMENT = as_factor(rep(
+            get_variable(otuRA, vars2test), Ntop
+          ))
+        )
+      }
+      
+      gtab %<>% group_by(SAMPLE_ID, OTU) %>% mutate(., BothZero := all(Rel_abundance == 0))
+      
+      # Create a dummy min-value for display
+      gtab %<>% group_by(OTU) %>% mutate(Zero = min(Rel_abundance[(Rel_abundance > 0.0)], na.rm = TRUE) /
+                                           10)
+      gtab %<>% group_by(SAMPLE_ID, OTU) %>% mutate(Rel_abundance = replace(Rel_abundance, Rel_abundance == 0.0, Zero[Rel_abundance == 0.0]))
+      gtab$SAMPLE_ID
+      
+      pointSize <- 3
+      p <- ggplot(
+        data = gtab,
+        mapping = aes(
+          x = TREATMENT,
+          y = Rel_abundance,
+          color = TREATMENT,
+          shape = TREATMENT
+        )
+      ) +
+        facet_wrap(~ OTU, scales = "free_y") +
+        # Not both zero
+        geom_point(
+          data = filter(gtab, BothZero == FALSE),
+          size = pointSize,
+          alpha = 0.8
+        ) +
+        # Both Zero
+        geom_point(
+          data = filter(gtab, BothZero == TRUE),
+          size = pointSize,
+          alpha = 0.8,
+          position = position_jitter(width = 0.2, height = 0)
+        ) +
+        geom_path(
+          data = filter(gtab, BothZero == FALSE),
+          mapping = aes(group = SAMPLE_ID),
+          color = "darkgray",
+          size = 0.25,
+          position = position_jitter(width = 0, height = 0.001)
+        ) +
+        geom_text(
+          mapping = aes(label = SAMPLE_ID),
+          data = filter(
+            gtab,
+            TREATMENT == levels(gtab$TREATMENT)[1] &
+              Rel_abundance > Zero
+          ),
+          color = "black",
+          size = 2,
+          nudge_x = -0.15
+        ) +
+        scale_colour_manual(values = pom2) +
+        # scale_y_sqrt() +
+        scale_y_log10() +
+        theme_bw() +
+        theme(text = element_text(size = f_size),
+              legend.position = "none") +
+        scale_size_continuous(range = c(2, 5)) +
+        ylab("Abundance (%)")
+      # ggtitle(paste("Abundance plot for OTU", OTU))
+      return(p)
+    }
+  }
 ```
 
 
@@ -308,14 +707,14 @@ summarize_phyloseq(carbom)
 *Group according to sample sources (Epibolus hingdut and Epibolus faecal pellets)*
 ```{r group according to sample sources, cache = T}
 # Epibolus hingdut
-Epi_hindgut <- subset_samples(carbom, sample_names(carbom) == "Hg-E1C_S90" | sample_names(carbom) == "Hg-E1G_S91" | sample_names(carbom) == "Hg-E1H_S92" | sample_names(carbom) == "Hg-E2A_S93" | sample_names(carbom) == "Hg-E2D_S94" | sample_names(carbom) == "Hg-E2H_S95" | sample_names(carbom) == "Hg-E3D_S97" | sample_names(carbom) == "Hg-E3E_S98" | sample_names(carbom) =="Hg-E3J_S99"  | sample_names(carbom) =="Hg-E4B1_S100" | sample_names(carbom) == "Hg-E4B2_S101" | sample_names(carbom) == "Hg-E4C_S102")
+  subset_samples(carbom, 
+  sample_names(carbom) %in% c("Hg-E1C_S90", "Hg-E1G_S91", "Hg-E1H_S92", "Hg-E2A_S93", "Hg-E2D_S94", 
+    "Hg-E2H_S95", "Hg-E3D_S97", "Hg-E3E_S98", "Hg-E3J_S99", "Hg-E4B1_S100", "Hg-E4B2_S101", "Hg-E4C_S102")
+) ->
 Epi_hindgut
 
-# Phyloseq object Summary
-summarize_phyloseq(Epi_hindgut)
-
+Epi_hindgut = subset_taxa(Epi_hindgut, Phylum != "unassigned")
 ```
-
 
 
 
@@ -351,28 +750,32 @@ colData(tse_Epi_hindgut_sub) <- tse_metadata
 # You can verify the change by checking:
 levels(tse_metadata$Treatment)
 
-# Run ANCOM-BC at the genus level and only including the prevalent genera
+phyloseq_to_tse_safe <- function(ps = ps_obj, test_condition = "Density.zone", ref_level = "Light") {
+  require(magrittr)
+  require(forcats)
+  require(phyloseq)
+
+  # critical for ANCOMBC that the reference is the first level!!
+  sample_data(ps)[[test_condition]] %<>% fct_relevel(., ref_level)
+  mia::makeTreeSummarizedExperimentFromPhyloseq(ps) %>%
+    return(.)
+}
+tse_Epi_hindgut_sub <- phyloseq_to_tse_safe(Epi_hindgut_sub,
+                                            test_condition = "Treatment",
+                                            ref_level = "Control")
+
+# Run ANCOM-BC2 at the genus level and only including the prevalent genera
 Epi_hindgut_sub_ancombc2 <- ancombc2(data = tse_Epi_hindgut_sub,
-                tax_level = "Genus",
+                tax_level = NULL,
                 assay_name = "counts",
                 fix_formula = "Treatment",
-                p_adj_method = "fdr",
-                # prv_cut = 0.1,
-                # lib_cut = 1000, 
-                s0_perc = 0.05,
+                p_adj_method = "BH",
                 group = "Treatment",
                 struc_zero = TRUE,
                 neg_lb = TRUE,
-                n_cl = 10,
+                n_cl = 70,
                 pairwise = TRUE,
-                global = TRUE,
-                # iter_control = list(tol = 1e-5, max_iter = 20, 
-                # verbose = FALSE),
-                # em_control = list(tol = 1e-5, max_iter = 100),
-                # lme_control = NULL, 
-                # mdfdr_control = list(fwer_ctrl_method = "holm", B = 100), 
-                # trend_control = NULL
-                )
+                global = FALSE)
 
 saveRDS(Epi_hindgut_sub_ancombc2, "RDS/Epi_hindgut_sub_ancombc2.Rds")
 
@@ -400,14 +803,14 @@ df_fig_global = df_Treatment %>%
                        dplyr::transmute(taxon, 
                                         diff_Treatment = diff_abn, 
                                         passed_ss = passed_ss)) %>%
-    dplyr::filter(diff_Treatment == 1, passed_ss == 1) %>%
+    dplyr::filter(diff_Treatment == 1) %>%
     dplyr::mutate(`lfc_Sterile feed` = `lfc_TreatmentSterile feed`,
                   `lfc_Antibiotics (2X)` = `lfc_TreatmentAntibiotics (2X)`,
-                  `lfc_Antibiotics (1X)` = `lfc_TreatmentAntibiotics (1X)`) %>%
+                  `lfc_Antibiotics (1X)` = `lfc_TreatmentAntibiotics (1X)`, color = ifelse(passed_ss == 1, "aquamarine3", "black")) %>%
     dplyr::transmute(taxon, 
                      `Sterile feed vs. Control` = round(`lfc_Sterile feed`, 2), 
                      `Antibiotics (2X) vs. Control` = round(`lfc_Antibiotics (2X)`, 2),
-                     `Antibiotics (1X) vs. Control` = round(`lfc_Antibiotics (1X)`, 2)) %>%
+                     `Antibiotics (1X) vs. Control` = round(`lfc_Antibiotics (1X)`, 2), color = color) %>%
     tidyr::pivot_longer(cols = `Sterile feed vs. Control`:`Antibiotics (2X) vs. Control`:`Antibiotics (1X) vs. Control`, 
                         names_to = "group", values_to = "value") %>%
     dplyr::arrange(taxon)
@@ -424,8 +827,253 @@ fig_global = df_fig_global %>%
   geom_text(aes(group, taxon, label = value), color = "black", size = 4) +
   labs(x = NULL, y = NULL, title = "Log fold changes for globally significant taxa") +
   theme_minimal() +
-  theme(plot.title = element_text(hjust = 0.5))
+   theme(plot.title = element_text(hjust = 0.5),
+  axis.text.y = element_text(color = df_fig_global %>%
+                                       dplyr::distinct(taxon, color) %>%
+                                       .$color))
 fig_global
 
 ggsave("ANCOM_BC_Fig/Epi_hindgut_sub_ANCOM-BC2.svg",width = 40, height = 40, units = "cm")
+
+
+
+
+
+
+# ANCOM-BC2 multiple pairwise comparisons
+
+res_pair = Epi_hindgut_sub_ancombc2$res_pair
+write_csv(res_pair, "ANCOM_BC_Table/Epi_hindgut_sub_ancombc2_pairwise.csv")
+
+df_fig_pair1 = res_pair %>%
+dplyr::filter(`diff_TreatmentSterile feed` == 1 |
+                      `diff_TreatmentAntibiotics (2X)` == 1 | `diff_TreatmentAntibiotics (1X)` == 1 |
+                      `diff_TreatmentAntibiotics (2X)_TreatmentSterile feed` == 1 | `diff_TreatmentAntibiotics (1X)_TreatmentSterile feed` == 1
+                  | `diff_TreatmentAntibiotics (1X)_TreatmentAntibiotics (2X)` == 1) %>%
+dplyr::mutate(lfc1 = ifelse(`diff_TreatmentSterile feed` == 1, 
+                                round(`lfc_TreatmentSterile feed`, 2), 0),
+                  lfc2 = ifelse(`diff_TreatmentAntibiotics (2X)` == 1, 
+                                round(`lfc_TreatmentAntibiotics (2X)`, 2), 0),
+                  lfc3 = ifelse(`diff_TreatmentAntibiotics (1X)` == 1, 
+                                round(`lfc_TreatmentAntibiotics (1X)`, 2), 0),
+                  lfc4 = ifelse(`diff_TreatmentAntibiotics (2X)_TreatmentSterile feed` == 1, 
+                                round(`lfc_TreatmentAntibiotics (2X)_TreatmentSterile feed`, 2), 0),
+                  lfc5 = ifelse(`diff_TreatmentAntibiotics (1X)_TreatmentSterile feed` == 1, 
+                                round(`lfc_TreatmentAntibiotics (1X)_TreatmentSterile feed`, 2), 0),
+                  lfc6 = ifelse(`diff_TreatmentAntibiotics (1X)_TreatmentAntibiotics (2X)` == 1, 
+                                round(`lfc_TreatmentAntibiotics (1X)_TreatmentAntibiotics (2X)`, 2), 0)) %>%
+tidyr::pivot_longer(cols = lfc1:lfc6, 
+                        names_to = "group", values_to = "value") %>%
+    dplyr::arrange(taxon) 
+
+df_fig_pair2 = res_pair %>%
+dplyr::filter(`diff_TreatmentSterile feed` == 1 | `diff_TreatmentAntibiotics (2X)` == 1 | `diff_TreatmentAntibiotics (1X)` == 1 |
+              `diff_TreatmentAntibiotics (2X)_TreatmentSterile feed` == 1 | `diff_TreatmentAntibiotics (1X)_TreatmentSterile feed` == 1 | `diff_TreatmentAntibiotics (1X)_TreatmentAntibiotics (2X)` == 1) %>%
+dplyr::mutate(lfc1 = ifelse(`passed_ss_TreatmentSterile feed` == 1 & `diff_TreatmentSterile feed` == 1, 
+                                "aquamarine3", "black"),
+                  lfc2 = ifelse(`passed_ss_TreatmentAntibiotics (2X)` == 1 & `diff_TreatmentAntibiotics (2X)` == 1, 
+                                "aquamarine3", "black"),
+                  lfc3 = ifelse(`passed_ss_TreatmentAntibiotics (1X)` == 1 & `diff_TreatmentAntibiotics (1X)` == 1, 
+                                "aquamarine3", "black"),
+                  lfc4 = ifelse(`passed_ss_TreatmentAntibiotics (2X)_TreatmentSterile feed` == 1 & `diff_TreatmentAntibiotics (2X)_TreatmentSterile feed` == 1, 
+                                "aquamarine3", "black"),
+                  lfc5 = ifelse(`passed_ss_TreatmentAntibiotics (1X)_TreatmentSterile feed` == 1 & `diff_TreatmentAntibiotics (1X)_TreatmentSterile feed` == 1, 
+                                "aquamarine3", "black"),
+                  lfc6 = ifelse(`passed_ss_TreatmentAntibiotics (1X)_TreatmentAntibiotics (2X)` == 1 & `diff_TreatmentAntibiotics (1X)_TreatmentAntibiotics (2X)` == 1, 
+                                "aquamarine3", "black")) %>%
+    tidyr::pivot_longer(cols = lfc1:lfc6, 
+                        names_to = "group", values_to = "color") %>%
+    dplyr::arrange(taxon)
+
+df_fig_pair = df_fig_pair1 %>%
+    dplyr::left_join(df_fig_pair2, by = c("taxon", "group"))
+
+df_fig_pair$group = dplyr::recode(df_fig_pair$group, 
+                          `lfc1` = "Sterile feed - Control",
+                          `lfc2` = "Antibiotics (2X) - Control",
+                          `lfc3` = "Antibiotics (1X) - Control",
+                          `lfc4` = "Antibiotics (2X) - Sterile feed",
+                          `lfc5` = "Antibiotics (1X) - Sterile feed",
+                          `lfc6` = "Antibiotics (1X) - Antibiotics (2X)")
+df_fig_pair$group = factor(df_fig_pair$group, 
+                          levels = c("Sterile feed - Control",
+                                     "Antibiotics (2X) - Control",
+                                     "Antibiotics (1X) - Control",
+                                     "Antibiotics (2X) - Sterile feed",
+                                     "Antibiotics (1X) - Sterile feed",
+                                     "Antibiotics (1X) - Antibiotics (2X)"))
+
+lo = floor(min(df_fig_pair$value))
+up = ceiling(max(df_fig_pair$value))
+mid = (lo + up)/2
+
+
+
+fig_pair = df_fig_pair %>%
+    ggplot(aes(x = group, y = taxon, fill = value)) + 
+    geom_tile(color = "black", linewidth = 0.5) +
+    scale_fill_gradient2(low = "blue", high = "red", mid = "white", 
+                         na.value = "white", midpoint = mid, limit = c(-6, 6),
+                         name = NULL) + 
+    geom_text(aes(group, taxon, label = value, color = color), size = 7) +
+    scale_color_identity(guide = FALSE) +
+    labs(x = NULL, y = NULL, title = "Log fold changes as compared to control group") +
+    theme_minimal() +
+    theme(plot.title = element_text(hjust = 0.5), axis.text=element_text(size=24), axis.text.x=element_text(size=24, angle = 90, vjust = 0.5, hjust = 1)) 
+fig_pair
+
+
+ggsave("ANCOM_BC_Fig/Epi_hindgut_sub_ANCOM-BC2_multiple_pairwise.svg",width = 30, height = 40, units = "cm")
+
+
+
+#dplyr::
+
+```
+
+
+
+
+
+
+*Differential abundance testing with DESeq2*
+```{r DESeq2, cache = T}
+# Remove all ASVs that aren't in at least 2 samples or have an abundance of at least 2
+Epi_hindgut_subset_pairwise_s <- filter_ASVs_by_prevalence(ps_obj = Epi_hindgut, 
+                                             abund_thresh = 2, 
+                                             prev_thresh = 2)
+
+# convert the treatment column into factor
+sample_data(Epi_hindgut_subset_pairwise_s)$Treatment <- as.factor(sample_data(Epi_hindgut_subset_pairwise_s)$Treatment)
+
+
+# Convert the phyloseq object to a DESeqDataSet and run DESeq2
+Epi_hindgut_ds <- phyloseq_to_deseq2(Epi_hindgut_subset_pairwise_s, ~ Treatment)
+
+# Define the levels of the Treatment factor
+Epi_hindgut_ds$Treatment <- factor(Epi_hindgut_ds$Treatment, levels = c("Control", "Sterile feed", "Antibiotics (2X)", "Antibiotics (1X)"))
+
+# Run DESeq2
+Epi_hindgut_ds1 <- DESeq2::DESeq(Epi_hindgut_ds)
+
+# Set the False Discovery Rate (FDR) cutoff
+alpha <- 0.05
+
+# Control vs Sterile feed
+resultsNames(Epi_hindgut_ds1)
+Epi_hindgut_res_SC <- DESeq2::results(Epi_hindgut_ds1, contrast = c("Treatment", "Control", "Sterile feed"), alpha = alpha)
+Epi_hindgut_res_SC <- Epi_hindgut_res_SC[order(Epi_hindgut_res_SC$padj, na.last = NA), ]
+#Epi_hindgut_res_sig_SC <- Epi_hindgut_res_SC[Epi_hindgut_res_SC$padj < alpha, ]
+#Epi_hindgut_res_sig_SC
+
+# Merge with taxa
+SC_res_sig = cbind(as(Epi_hindgut_res_SC, "data.frame"), as(tax_table(Epi_hindgut)[rownames(Epi_hindgut_res_SC), ], "matrix"))
+
+# Control vs Antibiotics (2X)
+Epi_hindgut_res_A2C <- DESeq2::results(Epi_hindgut_ds1, contrast = c("Treatment", "Control", "Antibiotics (2X)"), alpha = alpha)
+Epi_hindgut_res_A2C <- Epi_hindgut_res_A2C[order(Epi_hindgut_res_A2C$padj, na.last = NA), ]
+#Epi_hindgut_res_sig_A2C <- Epi_hindgut_res_A2C[Epi_hindgut_res_A2C$padj < alpha, ]
+Epi_hindgut_res_sig_A2C
+
+# Merge with taxa
+A1C_res_sig = cbind(as(Epi_hindgut_res_A2C, "data.frame"), as(tax_table(Epi_hindgut)[rownames(Epi_hindgut_res_A2C), ], "matrix"))
+
+# Control vs Antibiotics (1X)
+Epi_hindgut_res_A1C <- DESeq2::results(Epi_hindgut_ds1, contrast = c("Treatment", "Control", "Antibiotics (1X)"), alpha = alpha)
+Epi_hindgut_res_A1C <- Epi_hindgut_res_A1C[order(Epi_hindgut_res_A1C$padj, na.last = NA), ]
+#Epi_hindgut_res_sig_A1C <- Epi_hindgut_res_A1C[Epi_hindgut_res_A1C$padj < alpha, ]
+Epi_hindgut_res_sig_A1C
+
+# Merge with taxa
+A2C_res_sig = cbind(as(Epi_hindgut_res_A1C, "data.frame"), as(tax_table(Epi_hindgut)[rownames(Epi_hindgut_res_A1C), ], "matrix"))
+
+
+
+# Create a data frame for each result set (Epi_hindgut_res_sig_SC, Epi_hindgut_res_sig_A2C, Epi_hindgut_res_sig_A1C)
+Epi_hindgut_res_sig_SC <- data.frame(
+  ASV = rownames(SC_res_sig),
+  log2FoldChange = SC_res_sig$log2FoldChange,
+  lfcSE = SC_res_sig$lfcSE,
+  stat = SC_res_sig$stat,
+  pvalue = SC_res_sig$pvalue,
+  padj = SC_res_sig$padj,
+  Phylum = SC_res_sig$Phylum,
+  Class = SC_res_sig$Class,
+  Order = SC_res_sig$Order,
+  Family = SC_res_sig$Family,
+  Genus = SC_res_sig$Genus,
+  Species = SC_res_sig$Species,
+  Treatment = "Control vs Sterile feed"
+)
+
+Epi_hindgut_res_sig_A2C <- data.frame(
+  ASV = rownames(A2C_res_sig),
+  log2FoldChange = A2C_res_sig$log2FoldChange,
+  lfcSE = A2C_res_sig$lfcSE,
+  stat = A2C_res_sig$stat,
+  pvalue = A2C_res_sig$pvalue,
+  padj = A2C_res_sig$padj,
+  Phylum = A2C_res_sig$Phylum,
+  Class = A2C_res_sig$Class,
+  Order = A2C_res_sig$Order,
+  Family = A2C_res_sig$Family,
+  Genus = A2C_res_sig$Genus,
+  Species = A2C_res_sig$Species,
+  Treatment = "Control vs Antibiotics (2X)"
+)
+
+Epi_hindgut_res_sig_A1C <- data.frame(
+  ASV = rownames(A1C_res_sig),
+  log2FoldChange = A1C_res_sig$log2FoldChange,
+  lfcSE = A1C_res_sig$lfcSE,
+  stat = A1C_res_sig$stat,
+  pvalue = A1C_res_sig$pvalue,
+  padj = A1C_res_sig$padj,
+  Phylum = A1C_res_sig$Phylum,
+  Class = A1C_res_sig$Class,
+  Order = A1C_res_sig$Order,
+  Family = A1C_res_sig$Family,
+  Genus = A1C_res_sig$Genus,
+  Species = A1C_res_sig$Species,
+  Treatment = "Control vs Antibiotics (1X)"
+)
+
+
+# Merge the three data frames into a single data frame
+merged_results <- rbind(Epi_hindgut_res_sig_SC, Epi_hindgut_res_sig_A2C, Epi_hindgut_res_sig_A1C)
+
+# View the merged results
+head(merged_results)
+
+# Create the "Significance" column
+merged_results$Significance <- ifelse(merged_results$padj < alpha, "Pass", "Fail")
+head(merged_results)
+
+
+
+# Define the custom order for the "Comparison" variable
+custom_order <- c(
+  "Control vs Sterile feed",
+  "Control vs Antibiotics (2X)",
+  "Control vs Antibiotics (1X)")
+
+# Convert "Comparison" to a factor with the custom order
+merged_results$Treatment <- factor(merged_results$Treatment, levels = custom_order)
+
+significance <- 0.05
+p1_Epi_hindgut <- plot_ALDEx_tax(merged_results,
+                 OTU_labels = FALSE,
+                 Y_val = "log2FoldChange",
+                 sig_level = significance) +
+ 
+  facet_wrap(~ Treatment, scales = "free_y")  # Facet by "Comparison"
+
+print(p1_Epi_hindgut)
+
+ggsave("ANCOM_BC_Fig/DESeq2_Epi_hindgut.svg", width = 35, height = 25, units = "cm")
+
+alpha_thresh = 0.01
+LFC_thresh = 
+
+plot_DESeq(merged_results, Epi_hindgut_subset_pairwise_s, sig_level = alpha_thresh, LFC = LFC_thresh, rank = "Phylum", rare_thresh = 0.0045, ASV_labels = FALSE, Y_val = "log2FoldChange", plot_title = "")
 ```
