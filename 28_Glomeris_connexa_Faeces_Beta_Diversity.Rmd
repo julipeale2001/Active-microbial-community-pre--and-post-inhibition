@@ -692,6 +692,69 @@ gz <- function(in_path, out_path = tempfile()) {
   invisible(out_path)
 }
 
+
+# pairwise_adonis
+pairwise_adonis <- function(x, factors, sim.function = "vegdist", sim.method = "horn", 
+                           p.adjust.m = "BH", reduce = NULL) 
+{
+  require(vegan)
+  # Taken from: https://github.com/pmartinezarbizu/pairwiseAdonis
+  co <- combn(unique(as.character(factors)), 2)
+  pairs <- c()
+  total.DF <- c()
+  F.Model <- c()
+  R2 <- c()
+  p.value <- c()
+  for (elem in 1:ncol(co)) {
+    
+    if (sim.function == "daisy") {
+      x1 = daisy(x[factors %in% c(co[1, elem], co[2, elem]), ],
+                 metric = sim.method)
+    } else {
+      x1 = vegdist(x[factors %in% c(co[1, elem], co[2, elem]), ],
+                   method = sim.method)
+    }
+    ad <- adonis2(x1 ~ fct, 
+                  data = data.frame(fct = factors[factors %in% c(co[1, elem], 
+                                                                 co[2, elem])]),
+                  permutations = 999)
+    # ad <- adonis(x1 ~ factors[factors %in% c(co[1, elem], 
+    #     co[2, elem])], permutations = 999) # fails in vegan 2.5-7
+    # ad1 <- adonis(x[factors %in% c(co[1, elem], co[2, elem]), ] ~ fct,
+    #               data = data.frame(fct = factors[factors %in% c(co[1, elem],
+    #                                                         co[2, elem])]),
+    #               method="horn",
+    #               permutations = 999)
+    
+    pairs <- c(pairs, paste(co[1, elem], "vs", co[2, elem]))
+    # total.DF <- c(total.DF, ad$aov.tab["Total", 1]) # fails in vegan 2.5-7
+    total.DF <- c(total.DF, ad["Total", "Df"])
+    F.Model <- c(F.Model, ad[1, "F"])
+    R2 <- c(R2, ad[1, "R2"])
+    p.value <- c(p.value, ad[1, "Pr(>F)"])
+  }
+  p.adjusted <- p.adjust(p.value, method = p.adjust.m)
+  sig = c(rep("", length(p.adjusted)))
+  sig[p.adjusted <= 0.05] <- "."
+  sig[p.adjusted <= 0.01] <- "*"
+  sig[p.adjusted <= 0.001] <- "**"
+  sig[p.adjusted <= 1e-04] <- "***"
+  pairw.res <- data.frame(pairs, total.DF, F.Model, R2, p.value, 
+                          p.adjusted, sig)
+  if (!is.null(reduce)) {
+    pairw.res <- subset(pairw.res, grepl(reduce, pairs))
+    pairw.res$p.adjusted <- p.adjust(pairw.res$p.value, method = p.adjust.m)
+    sig = c(rep("", length(pairw.res$p.adjusted)))
+    sig[pairw.res$p.adjusted <= 0.05] <- "."
+    sig[pairw.res$p.adjusted <= 0.01] <- "*"
+    sig[pairw.res$p.adjusted <= 0.001] <- "**"
+    sig[pairw.res$p.adjusted <= 1e-04] <- "***"
+    pairw.res <- data.frame(pairw.res[, 1:5], sig)
+  }
+  class(pairw.res) <- c("pwadonis", "data.frame")
+  return(pairw.res)
+}
+
 ```
 
 
@@ -914,6 +977,9 @@ Glo_faecal.rel <- microbiome::transform(Glo_faecal2, "compositional")
 
 Glo_faecal.ord_pcoa_bray <- ordinate(Glo_faecal.rel, "CAP", "bray", formula =  ~ Treatment)
 
+anova(Glo_faecal.ord_pcoa_bray)
+anova(Glo_faecal.ord_pcoa_bray, by = "axis")
+
 # Scree plot
 plot_scree(Glo_faecal.ord_pcoa_bray) + theme_bw() # Axis 1 and 2 are of interest.
 
@@ -938,6 +1004,7 @@ No clear ordination.
 # *Permanova for beta diversity*
 Run a permanova test using the adonis function in vegan to test the hypothesis that the treatment samples have different microbial communities
 ```{r Glomeris faecal Permanova for beta diversity, cache = T}
+set.seed(10000)
 # Calculate bray curtis distance matrix
 Glo_faecal.erie_bray <- phyloseq::distance(Glo_faecal2, method = "bray")
 
@@ -958,7 +1025,11 @@ boxplot(Glo_faecal.beta, xlab = "", las = 2, cex.axis = 0.8)
 
 anova(Glo_faecal.beta)
 permutest(Glo_faecal.beta)
-TukeyHSD(beta)
+TukeyHSD(Glo_faecal.beta)
+
+
+# Define pairwise comparisons
+pairwise_adonis(x = t(otu_table(Glo_faecal2)), factor = get_variable(Glo_faecal2, "Treatment"), sim.function = "vegdist", sim.method = "bray",  p.adjust.m = "BH")
 ```
 This output tells us that our adonis test is insignificant so we can accept the null hypothesis that our the treatment samples have same microbial communities. Additionally, our betadisper results are insignificant, meaning we accept the null hypothesis that our treatments have the same dispersions. This means we can be more confident that our adonis result is a real result due to the differences in group dispersions.
 
