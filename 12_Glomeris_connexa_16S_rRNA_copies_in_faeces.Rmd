@@ -291,87 +291,54 @@ read_csv("12_Glomeris_Faecal-Pellet_Copy_Numbers.csv",
 
 ```
 
-*Barplot of G. connexa faecal pellet bacterial copy numbers for all replicates*
-```{r plot all replicate faecal copy numbers by Glomeris, cache=TRUE}
-# Barplot for all total copy numbers
-ggplot(Glo_Faecal, aes(x = Code, y = `Total Copy Numbers of 16S rRNA`, fill = Treatment, group = Code)) + 
+*Barplot of G. connexa faecal pellet bacterial total 16S rRNA Copies for all replicates*
+```{r plot all replicate faecal copy numbers by Epibolus, cache=TRUE}
+# Barplot for all Total 16S rRNA Copies
+ggplot(Glo_Faecal, aes(x = Code, y = `Total 16S rRNA Copies`, fill = Treatment, group = Code)) + 
   geom_bar(stat = 'identity', position='dodge') +  xlab("Groups") + scale_y_continuous(label=scientific)
-
-# Barplot for all 16S rRNA Copies/1 ng DNAs
-ggplot(Glo_Faecal, aes(x = Code, y = `16S rRNA Copies/1 ng DNA`, fill = Treatment, group = Code)) + 
-  geom_bar(stat = 'identity', position='dodge') +  xlab("Groups") + scale_y_continuous(label=scientific)
-
-# Barplot for all 16S rRNA Copies/mg sample weight
-ggplot(Glo_Faecal, aes(x = Code, y = `16S rRNA Copies/mg sample weight`, fill = Treatment, group = Code)) + 
-  geom_bar(stat = 'identity', position='dodge') +  xlab("Groups") + scale_y_continuous(label=scientific)
-
 ```
 
 *Barplot of G. connexa faecal bacterial mean copy numbers**
-```{r plot mean+SE faecal copy numbers by Glomeris, cache=TRUE}
-# Barplot for mean total copy numbers
+```{r plot mean+SE faecal copy numbers by Epibolus, cache=TRUE}
+
+# Barplot for Total 16S rRNA Copies
  Glo_Faecal %>%  # the name of the new data frame and the data frame to be summarised
   drop_na() %>% # drop rows with missing values
   group_by(Treatment) %>%   # the grouping variable
-  summarise(`Mean Total Copy Numbers of 16S rRNA` = mean(`Total Copy Numbers of 16S rRNA`),  # calculates the mean of each group
-            StD = sd(`Total Copy Numbers of 16S rRNA`), # calculates the standard deviation of each group
+  summarise(`Mean Total 16S rRNA Copies` = mean((`Total 16S rRNA Copies`)),  # calculates the mean of each group
+            StD = sd((`Total 16S rRNA Copies`)), # calculates the standard deviation of each group
             n = n(),  # calculates the sample size per group
-            SE = sd(`Total Copy Numbers of 16S rRNA`)/sqrt(n())) -> # calculates the standard error of each group
+            SE = sd((`Total 16S rRNA Copies`))/sqrt(n())) -> # calculates the standard error of each group
  Total_mean
 
 # Create plot
-ggplot(Total_mean, aes(x = Treatment, y = `Mean Total Copy Numbers of 16S rRNA`)) + 
-  geom_bar(stat = 'identity', position='dodge', colour = pom4, aes(fill=Treatment)) +
-  geom_errorbar(aes(ymin = `Mean Total Copy Numbers of 16S rRNA` - SE, ymax = `Mean Total Copy Numbers of 16S rRNA` + SE), width=.2,
-                 position=position_dodge(.9)) + scale_y_continuous(label=scientific)
+ggplot(Total_mean, aes(x = Treatment, y = `Mean Total 16S rRNA Copies`)) + 
+  geom_bar(stat = 'identity', position='dodge', fill = pom4, aes(fill=Treatment)) + ylab(("Mean Total 16S rRNA Copies")) +
+  geom_errorbar(aes(ymin = `Mean Total 16S rRNA Copies` - SE, ymax = `Mean Total 16S rRNA Copies` + SE), width=.2,
+                 position=position_dodge(.9)) +
+  scale_y_continuous(n.breaks = 5, limits = c(0, 6.1e+11), labels = scientific)
 
-# Barplot for mean 16S rRNA Copies/1 ng DNA
-Glo_Faecal %>%  # the name of the new data frame and the data frame to be summarised
-  drop_na() %>% # drop rows with missing values
-  group_by(Treatment) %>%   # the grouping variable
-  summarise(`Mean 16S rRNA Copies/1 ng DNA` = mean(`16S rRNA Copies/1 ng DNA`),  # calculates the mean of each group
-            StD = sd(`16S rRNA Copies/1 ng DNA`), # calculates the standard deviation of each group
-            n = n(),  # calculates the sample size per group
-            SE = sd(`16S rRNA Copies/1 ng DNA`)/sqrt(n())) -> # calculates the standard error of each group
-  DNA_mean
+# data <- data.frame(
+#   Treatment = c("Control", "Sterile", "2X-Diluted", "Undiluted"),
+#   Counts = c(42766667, 23100000, 17083333, 12850000)
+# )
+# 
+# # Calculate the percentage decrease for each treatment compared to the control
+# data$Percentage_Decrease <- ((data$Counts - data$Counts[1]) / data$Counts[1]) * 100
+# 
+# # Print the results
+# print(data)
 
-
-# Create plot
-ggplot(DNA_mean, aes(x = Treatment, y = `Mean 16S rRNA Copies/1 ng DNA`)) + 
-  geom_bar(stat = 'identity', position='dodge', fill = pom4, aes(fill=Treatment)) +
-  geom_errorbar(aes(ymin = `Mean 16S rRNA Copies/1 ng DNA` - SE, ymax = `Mean 16S rRNA Copies/1 ng DNA` + SE), width=.2,
-                 position=position_dodge(.9)) + scale_y_continuous(label=scientific) ->
-  glo_fae
-
-
-ggp <- (epi_fae + glo_fae)  
-ggp                           
-
-# Barplot for mean 16S rRNA Copies/mg sample weight
-Glo_Faecal %>%  # the name of the new data frame and the data frame to be summarised
-  drop_na() %>% # drop rows with missing values
-  group_by(Treatment) %>%   # the grouping variable
-  summarise(`Mean 16S rRNA Copies/mg sample weight` = mean(`16S rRNA Copies/mg sample weight`),  # calculates the mean of each group
-            StD = sd(`16S rRNA Copies/mg sample weight`), # calculates the standard deviation of each group
-            n = n(),  # calculates the sample size per group
-            SE = sd(`16S rRNA Copies/mg sample weight`)/sqrt(n())) -> # calculates the standard error of each group
-  Weight_mean
-
-
-# Create plot
-ggplot(Weight_mean, aes(x = Treatment, y = `Mean 16S rRNA Copies/mg sample weight`)) + 
-  geom_bar(stat = 'identity', position='dodge', colour = pom4, aes(fill=Treatment)) +
-  geom_errorbar(aes(ymin = `Mean 16S rRNA Copies/mg sample weight` - SE, ymax = `Mean 16S rRNA Copies/mg sample weight` + SE), width=.2,
-                 position=position_dodge(.9)) + scale_y_continuous(label=scientific)
 
 ```
 
+
 #### Anova tests
-**Compare G. connexa faecal copy numbers between groups**
-```{r faecal copy number aov by Glomersi, cache=T}
-# ANOVA for total copy numbers
+**Compare G. connexa faecal total 16S rRNA Copies**
+```{r faecal copy number aov by Epibolus, cache=T}
+# ANOVA for Total 16S rRNA Copies
 Glo_Faecal %>% 
-  aov(`Total Copy Numbers of 16S rRNA` ~ Treatment, .) -> # fit an anova model
+  aov(`Total 16S rRNA Copies` ~ Treatment, .) -> # fit an anova model
   aov_total
   
 print(Anova(aov_total)) # print results
@@ -388,44 +355,106 @@ mod_data_df_total <-
 
 PlotLmResid(mod_data_df_total) # plot residuals
 
-# ANOVA for 16S rRNA Copies/1 ng DNA
-Glo_Faecal %>% 
-  aov(`16S rRNA Copies/1 ng DNA` ~ Treatment, .) -> # fit an anova model
-  aov_dna
-  
-print(Anova(aov_dna)) # print results
 
-aov_dna_df <- fortify(aov_dna) # make a data frame for plotting
+
+
+
+# Log transformation
+# ANOVA for Total 16S rRNA Copies
+Glo_Faecal %>% 
+  aov(log(`Total 16S rRNA Copies`) ~ Treatment, .) -> # fit an anova model
+  aov_total
+  
+print(Anova(aov_total)) # print results
+
+aov_total_df <- fortify(aov_total) # make a data frame for plotting
 factor.combinations <-
-  as.numeric(factor(aov_dna_df$Treatment),
-             levels = unique(as.character(paste(aov_dna_df$Treatment)))
+  as.numeric(factor(aov_total_df$Treatment),
+             levels = unique(as.character(paste(aov_total_df$Treatment)))
   ) # needed for "residuals vs leverage
-mod_data_df_dna <-
-  cbind(aov_dna_df,
-        rows = 1:nrow(aov_dna_df),
+mod_data_df_total <-
+  cbind(aov_total_df,
+        rows = 1:nrow(aov_total_df),
         factors = factor.combinations)
 
-PlotLmResid(mod_data_df_dna) # plot residuals
+PlotLmResid(mod_data_df_total) # plot residuals
 
-# ANOVA for 16S rRNA Copies/mg sample weight
-Glo_Faecal %>% 
-  aov(`16S rRNA Copies/mg sample weight` ~ Treatment, .) -> # fit an anova model
-  aov_weight
-  
-print(Anova(aov_weight)) # print results
-
-aov_weight_df <- fortify(aov_weight) # make a data frame for plotting
-factor.combinations <-
-  as.numeric(factor(aov_weight_df$Treatment),
-             levels = unique(as.character(paste(aov_weight_df$Treatment)))
-  ) # needed for "residuals vs leverage
-mod_data_df_weight <-
-  cbind(aov_weight_df,
-        rows = 1:nrow(aov_weight_df),
-        factors = factor.combinations)
-
-PlotLmResid(mod_data_df_weight) # plot residuals
 ```
-1. The ANOVA model indicates no significant differences in the total copy numbers.
-2. The ANOVA model indicates no significant differences in the 16S rRNA Copies/1 ng DNA.
-3. The ANOVA model no significant differences different in the 16S rRNA Copies/mg sample weight.
+The ANOVA model indicates significant differences in the total copy numbers.
+
+
+ **Building a regression model for total 16S rRNA Copies**
+```{r 16s RNA copies aov, cache=T}
+# Building a regression model
+Glo_Faecal_model1 <- Glo_Faecal %>% 
+                     lm(`Total 16S rRNA Copies` ~ Treatment, data = .)
+
+print(Anova(Glo_Faecal_model1, type = "III"))
+
+# checking model assumptions
+check_model(Glo_Faecal_model1)
+
+Glo_Faecal_emm_mod1 <- emmeans(Glo_Faecal_model1, as.formula(paste("", "Treatment", sep = " ~ ")), weights = "equal")
+      
+# Contrasts, pairwise comparisons, tests, and confidence intervals.
+Glo_Faecal_emm_mod_cons1 <- contrast(Glo_Faecal_emm_mod1, method = "pairwise", adjust = "BH")
+print(Glo_Faecal_emm_mod_cons1)
+
+# The mode shows no statistical significance but before moving on, we need to test the model's assumptions. Obviously the dataset does not fit the assumptions of the model so we cannot use the results and we need to transform the model so that the residuals are normally distributed. One of the easiest ways is to log-transform the data before the analysis.
+
+Glo_Faecal %<>%
+  mutate(log_copies = log2(`Total 16S rRNA Copies`))
+
+# check the model
+Glo_Faecal_model2 <- Glo_Faecal %>% 
+                     lm(log_copies ~ Treatment, data = .)
+print(Anova(Glo_Faecal_model2, type = "III"))
+
+
+# checking model assumptions
+check_model(Glo_Faecal_model2)
+
+Glo_Faecal_emm_mod2 <- emmeans(Glo_Faecal_model2, as.formula(paste("", "Treatment", sep = " ~ ")), weights = "equal")
+      
+# Contrasts, pairwise comparisons, tests, and confidence intervals.
+Glo_Faecal_emm_mod_cons2 <- contrast(Glo_Faecal_emm_mod2, method = "pairwise", adjust = "BH")
+print(Glo_Faecal_emm_mod_cons2)
+
+
+
+
+
+
+
+
+
+# Test for heteroscedasticity, we can perform a Breusch-Pagan test
+# perform Breusch-Pagan test
+bptest(Glo_Faecal_model1)
+
+# Perform Weighted Least Squares Regression
+#define weights to use
+wt <- 1 / lm(abs(Glo_Faecal_model1$residuals) ~ Glo_Faecal_model1$fitted.values)$fitted.values^2
+
+#perform weighted least squares regression
+wls_model <- lm(`Total 16S rRNA Copies` ~ Treatment, data = Glo_Faecal, weights=wt)
+
+#view summary of model
+summary(wls_model)
+
+
+# For transformed
+# Test for heteroscedasticity, we can perform a Breusch-Pagan test
+# perform Breusch-Pagan test
+bptest(Glo_Faecal_model2)
+
+# Perform Weighted Least Squares Regression
+#define weights to use
+wt <- 1 / lm(abs(Glo_Faecal_model2$residuals) ~ Glo_Faecal_model2$fitted.values)$fitted.values^2
+
+#perform weighted least squares regression
+wls_model <- lm(`Total 16S rRNA Copies` ~ Treatment, data = Glo_Faecal, weights=wt)
+
+#view summary of model
+summary(wls_model)
+```
