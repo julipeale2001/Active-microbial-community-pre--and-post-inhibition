@@ -16,6 +16,8 @@ output:
     df_print: "kable"
     fig_caption: true
     code_folding: "show"
+editor_options: 
+  chunk_output_type: console
 ---
 
 ```{r libraries, include=F}
@@ -1154,7 +1156,7 @@ Glo_hindgut_glom_rel_DF <- psmelt(Glo_hindgut_glom_rel)
 Glo_hindgut_glom_rel_DF$Genus %<>% as.character()
 
 # group dataframe by Genus, calculate median rel. abundance
-detach(package:plyr)    
+#detach(package:plyr)    
 library(dplyr) # OR df1 <- ddply(Glo_hindgut_glom_rel_DF, .(Genus), summarise, median = median(Abundance))
 Glo_hindgut_glom_rel_DF %>%
   group_by(Genus) %>%
@@ -1162,7 +1164,7 @@ Glo_hindgut_glom_rel_DF %>%
   medians
 
 # find Phyla whose rel. abund. is less than 0.5%
-Other_phyla <- medians[medians$median <= 0.005, ]$Genus
+Other_phyla <- medians[medians$median <= 0.03, ]$Genus
 
 # change their name to "Rares"
 Glo_hindgut_glom_rel_DF[Glo_hindgut_glom_rel_DF$Genus %in% Other_phyla, ]$Genus <- 'Rares'
@@ -1233,8 +1235,13 @@ print(Glo_hindgut_d)
 *Creating 100% abundance stacked bar plots with all the families in Glomeris dataset*
 
 ```{r Creating 100% abundance stacked bar plots for most abundant ASVs for Genus distribution Glomeris hindgut, cache = T}
+grid.colour = c(Citrobacter  = "#006400", Desulfovibrio  = "#A52A2A", Bacteroides  = "#008080", Alistipes  = "#8A2BE2", Candidatus_Symbiothrix  = "#808000", Candidatus_Methanoplasma = "#00FF00", Pseudomonas = "#00FFFF", Dysgonomonas  = "#FF00FF", Achromobacter  = "#800000", Thauera = "#FF6347", Klebsiella = "#FFFF00", Rares = "#C0C0C0")
 
-Glo_hindgut_b <- ggplot(data = Glo_hindgut_glom_rel_DF_2plot, mapping = aes_string(x = "Treatment", y = "Abundance")) + geom_bar(aes(color = Genus, fill  = Genus), stat = "identity", position= "fill") + ylab("Relative Abundance")
+Glo_hindgut_glom_rel_DF_2plot %>%
+group_by(Treatment, Genus) %>%
+summarize(Abundance = sum(Abundance)) %>%
+ggplot(mapping = aes_string(x = "Treatment", y = "Abundance")) + geom_bar(aes(fill  = Genus), stat = "identity", position= "fill") + ylab("Relative Abundance") + scale_fill_manual(values = grid.colour) ->
+Glo_hindgut_b
 Glo_hindgut_b$data$Treatment <- factor(Glo_hindgut_b$data$Treatment, levels = c("Control", "Sterile feed", "Antibiotics (5X)", "Antibiotics (2X)"))
 Glo_hindgut_b
 ```
