@@ -1,0 +1,832 @@
+---
+title: "Amplicon Sequence Analyses after Antibiotic Treatment"
+subtitle: "faecal and Faecal ANCOM-BC2 Analysis"
+author: "Julius Nweze"
+date: "`r Sys.Date()`"
+output:
+  rmarkdown::html_document:
+    toc: true
+    toc_float: true
+    toc_depth: 5
+    keep_md: true
+    number_sections: false
+    highlight: "pygments"
+    theme: "flatly"
+    dev: "png"
+    df_print: "kable"
+    fig_caption: true
+    code_folding: "show"
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r libraries, include=F}
+# Load libraries
+#.libPaths(c('~/R/library', .libPaths())) # Uncomment if you have no write access to R path
+
+repo <- "http://cran.wu.ac.at"
+lib.loc <- Sys.getenv("R_LIBS_USER")
+
+update.packages(
+    lib.loc, 
+    repos = repo,
+    ask = FALSE
+)
+
+.cran_libs <- c(
+  "phyloseq", # a set of classes and tools to facilitate the import, storage, analysis, and graphical display of microbiome census data
+  "rmarkdown", # Dynamic Documents for R
+  "knitr",  # A General-Purpose Package for Dynamic Report Generation in R
+  "extrafont", # for extra figure fonts
+  "phyloseq.extended", # Various customs functions written to enhance the base functions of phyloseq
+  "dplyr",  # filter and reformat data frames
+  "gridExtra", # To arrange multiple grid-based plots on a page, and draw tables.
+  "knitr", # A General-Purpose Package for Dynamic Report Generation in R
+  "kableExtra", # Construct Complex Table with 'kable' and Pipe Syntax
+  "rmarkdown", # Dynamic Documents for R
+  "extrafont", # for extra figure fonts
+  "tidyverse", # for dplyr forcats ggplot2 readr tibble
+  "grid", # The Grid Graphics Package
+  "magrittr", # pipes
+  "scales", # Generic plot scaling methods
+  "svglite", # for svg files
+  "vegan",  # Ordination methods, diversity analysis and other functions for community and vegetation ecologists
+  "car", # Companion to Applied Regression
+  "rcompanion", #Functions to Support Extension Education Program Evaluation
+  "multcomp", # Simultaneous Inference in General Parametric Models 
+  "nlme", # Fit Linear Model Using Generalized Least Squares
+  "ggResidpanel", # Panels and Interactive Versions of Diagnostic Plots using 
+  "lsmeans", # Least-Squares Means
+  "ggplot2",      # graphics
+  "tidyr", # necessary to import the data from Excel file
+  "phyloseqGraphTest", # Provides functions for graph-based multiple-sample testing and visualization of microbiome data
+  "shiny", # makes it easy to build interactive web apps straight from R
+  "miniUI", # Designed to work especially well for creating Shiny Gadgets
+  "caret", # Classification And REgression Training is a set of functions that attempt to streamline the process for creating predictive models
+  "pls", # Partial Least Squares and Principal Component Regression
+  "e1071", # Functions for latent class analysis, short time Fourier transform, fuzzy clustering, support vector machines
+  "randomForest",
+  "ggrepel",
+  "dunn.test",
+  "reshape2",
+  "readODS",
+  "devtools",
+  "micro4all",
+  "PMA", 
+    # "structSSI",  
+  "ade4",
+  "igraph", 
+  "ggnetwork", 
+  "intergraph",
+  "DT", 
+  "scales",
+  "mia",
+  "microbiome",
+  "ggpubr",
+  "RColorBrewer",
+  "microbiomeutilities",
+  "viridis",
+  "tibble",
+  "ANCOMBC",
+  "cowplot",
+  "userfriendlyscience",
+# "agricolae", # Statistical Procedures for Agricultural Research
+ # "doParallel", # parallel backend for the foreach/%dopar% function
+ "BiodiversityR", # Package for Community Ecology and Suitability Analysis
+ # "hexbin", # Hexagonal Binning Routines
+ # "ggtern", # An Extension to 'ggplot2', for the Creation of Ternary Diagrams
+#  "MuMIn" # Multi-Model Inference
+  #"stringr",
+ # "mctoolsr"
+"AnnotationDbi", 
+"DESeq2", 
+"GO.db", 
+"impute", 
+"preprocessCore",
+"adespatial"
+) 
+
+.inst <- .cran_libs %in% installed.packages()
+if (any(!.inst)) {
+   install.packages(.cran_libs[!.inst],
+                    repos = repo,
+                    lib = lib.loc)
+}
+
+.bioc_libs <- c(
+  #"multtest", #Resampling-based multiple hypothesis testing
+)
+
+.bioc_inst <- .bioc_libs %in% installed.packages()
+if (any(!.bioc_inst)) {
+   if (!requireNamespace("BiocManager", quietly = TRUE))
+   install.packages("BiocManager")
+   BiocManager::install(ask = F, lib = lib.loc)  # upgrade bioC packages
+   BiocManager::install(.bioc_libs[!.bioc_inst], ask = F, lib = lib.loc)
+}
+
+.local_libs <- c()
+
+.inst <- names(.local_libs) %in% installed.packages()
+if (any(!.inst)) {
+   install.packages(paste0("~/R/", .local_libs[!.inst]) ,repos = NULL, type = "source", lib = lib.loc)
+}
+
+.github_libs <- c()
+
+.github_lib_names <- stringr::str_replace(.github_libs, ".*/(.*)$", "\\1")
+
+.github_inst <- .github_lib_names %in% installed.packages()
+if (any(!.github_inst)) {
+  devtools::install_github(.github_libs[!.github_inst],
+                           lib = lib.loc,
+                           dependencies = TRUE)
+}
+
+
+# Load packages into session, and print package version
+(loaded.libs <- sapply(c(.cran_libs, .bioc_libs, names(.local_libs), .github_lib_names), require, character.only = TRUE))
+if (!all(loaded.libs)) {stop(paste("Package(s):", names(loaded.libs[loaded.libs == FALSE]), "could not be loaded"))}
+sapply(c(.cran_libs, .bioc_libs, names(.local_libs), .github_lib_names), packageVersion)
+set.seed(123456789)
+bootstraps <- 1000
+min_lib_size <- 1000
+```
+
+
+```{r style settings, include=F}
+graphic_device <- "svglite"
+options(width = 90, knitr.table.format = "html") 
+opts_chunk$set(
+  warning = FALSE,
+  message = FALSE,
+  cache = TRUE,
+  dev = graphic_device,
+  fig.ext = "svg",
+  #  fig.width=12,
+  #  fig.height=8,
+  cache.path = "Antibiotics_Sequence_cache/",
+  fig.path = "Antibiotics_Sequence_figures/"
+)
+
+f_name <- "DejaVu Sans" #sub("\\s//", "", f_name)
+f_size <- 12
+font_import(pattern = "DejaVuSans", prompt = FALSE)
+loadfonts() # registers fonts
+theme_set(theme_bw(base_size = f_size, base_family = f_name))
+pom4 <- ggpomological:::pomological_palette[c(2, 1, 9, 3)]
+pom2 <- c(ggpomological:::pomological_base[[7]], ggpomological:::pomological_palette[[1]])
+```
+
+```{r functions, include=F}
+#' Filter ASVs by Count and Presence in a Phyloseq Object
+#' Filter ASVs by count number and presence in a phyloseq object based on specified thresholds.
+#'
+#' @param physeq A phyloseq object that has sample indices.
+#'
+#' @param abund_thresh The abundance threshold for filtering ASVs. ASVs with counts below this threshold will be removed.
+#'
+#' @param prev_thresh The prevalence threshold for filtering ASVs. ASVs must be present in at least this many samples to be retained.
+#'
+#' @param var2split A single character string matching a variable name in the corresponding sample_data of `physeq`.
+#'                  If provided, ASVs will be filtered separately for each level of the specified variable.
+#'                  Default: ""
+#'
+#' @return A filtered phyloseq object with ASVs meeting the specified abundance and prevalence thresholds.
+#'
+#' @author Roey Angel (https://github.com/roey-angel)
+#'
+#' @usage filter_ASVs_by_prevalence(physeq, abund_thresh = 10, prev_thresh = 6, var2split = "")
+#'
+#' @seealso \code{\link{filter_taxa_by_prevalence}}
+#'
+#' @export
+#' 
+filter_ASVs_by_prevalence <- function (ps_obj, abund_thresh = 10, prev_thresh = 6, var2split = "") {
+  # Filter ASVs by count number and presence in a phyloseq object
+  # var2split <<- vars2test 
+  trans <- FALSE
+  if(taxa_are_rows(ps_obj)) {
+    trans <- TRUE
+    ps_obj <- t(ps_obj)}
+  
+  if(!is.na(var2split) & var2split != "") {
+    split_levels <- as.character(unique(get_variable(ps_obj, var2split)))
+
+    keep <- taxa_names(ps_obj) %in% taxa_names(ps_obj)
+    names(keep) <- taxa_names(ps_obj)
+    for (split_level in split_levels){
+      split_ps <- ps_obj
+      # split_ps <- subset_samples(ps_obj, get(var2split) == split_level) # Indirection is needed here (NSE) but phyloseq is too shitty to accept it!!
+      oldDF <- as(sample_data(ps_obj), "data.frame")
+      newDF <- subset(oldDF, get({{var2split}}) == split_level) 
+      sample_data(split_ps) <- sample_data(newDF)
+      otu_tab <- as(otu_table(split_ps), "matrix")
+      keep <- keep & (colSums(otu_tab >= abund_thresh) >= prev_thresh)
+      #print(keep)
+    }
+
+  } else {
+    otu_tab <- as(otu_table(ps_obj), "matrix")
+    keep <- colSums(otu_tab >= abund_thresh) >= prev_thresh
+    #print(keep)
+  }
+  
+  otu_tab <- as(otu_table(ps_obj), "matrix")
+  otu_tab <- otu_tab[, keep]
+  otu_table(ps_obj) <- otu_table(otu_tab, taxa_are_rows = FALSE)
+  if(trans) {ps_obj <- t(ps_obj)}
+  return(ps_obj)
+}
+
+```
+
+
+```{r functions, include=F}
+
+DropRareSpecies <-
+  function(Ps_obj = Ps_obj_subset,
+           prevalence = 0.1) {
+    prevdf <- apply(
+      X = otu_table(Ps_obj),
+      MARGIN = ifelse(taxa_are_rows(Ps_obj), yes = 1, no = 2),
+      FUN = function(x) {
+        sum(x > 0)
+      }
+    )
+    # Add taxonomy and total read counts to this data.frame
+    prevdf <- data.frame(Prevalence = prevdf,
+                         TotalAbundance = taxa_sums(Ps_obj),
+                         tax_table(Ps_obj))
+    
+    # Define prevalence threshold as 0.X of total samples
+    prevalenceThreshold <- prevalence * nsamples(Ps_obj)
+    prevalenceThreshold
+    
+    # Execute prevalence filter, using `prune_taxa()` function
+    prevdf_phylum_filt <-
+      subset(prevdf,
+             Phylum %in% get_taxa_unique(Ps_obj, "Phylum"))
+    keepTaxa <-
+      row.names(prevdf_phylum_filt)[(prevdf_phylum_filt$Prevalence >= prevalenceThreshold)]
+    Ps_obj_small <- prune_taxa(keepTaxa, Ps_obj)
+    sample_data(Ps_obj_small)$Lib.size <-
+      rowSums(otu_table(Ps_obj_small))
+    print(Ps_obj)
+    print(Ps_obj_small)
+    return(Ps_obj_small)
+  }
+
+calc_ALDEx2 <-
+  function(physeq_obj = Ps_obj_filt_subset,
+           vars2test = "Spill.Treatment",
+           rare_phyla = Rare_phyla,
+           sig_level = 0.05,
+           LFC = 0.322,
+           ...) {
+    require(phyloseq)
+    require(speedyseq)
+    require(ALDEx2)
+    physeq_obj <- filter_taxa(physeq_obj, function(x)
+      sum(x) > 0, TRUE)
+    # physeq_obj <- prune_taxa(sig_taxa, physeq_obj) # remove taxa not significant under the full model
+    data2test <- otu_table(physeq_obj)
+    comparison <- as.character(get_variable(physeq_obj, vars2test))
+    ALDEx <- aldex.clr(
+      data2test,
+      comparison,
+      mc.samples = 128,
+      denom = "iqlr",
+      # iqlr for slight assymetry in composition
+      verbose = TRUE,
+      useMC = TRUE
+    )
+    ALDEx_tt <-
+      aldex.ttest(ALDEx, paired.test = FALSE, verbose = TRUE) # for two conditions
+    ALDEx_effect <- aldex.effect(
+      ALDEx,
+      include.sample.summary = TRUE,
+      verbose = TRUE,
+      useMC = TRUE
+    ) # estimate effect sizes
+    ALDEx2plot <-
+      prep_AlDEx_data(ALDEx_tt,
+                    ALDEx_effect,
+                    physeq_obj,
+                    sig_level,
+                    LFC,
+                    Taxa_rank,
+                    rare_phyla)
+    return(ALDEx2plot)
+  }
+
+prep_AlDEx_data <-
+  function(ALDEx_tt,
+           ALDEx_effect,
+           physeq_obj = Ps_obj_filt_subset,
+           sig_level,
+           LFC,
+           Taxa_rank,
+           rare_phyla,
+           ...) {
+    ALDEx2plot <- data.frame(ALDEx_tt, ALDEx_effect) # merge results
+    # group dataframe by OTU, calculate median rel. abundance
+    physeq_obj %>%
+      transform_sample_counts(., function(x)
+        x / sum(x) * 100) %>%
+      psmelt() %>%
+      group_by(OTU) %>%
+      # filter(OTU %in% sig_taxa) %>%
+      summarise(baseMean = mean(Abundance)) ->
+      baseMean
+    
+    ALDEx2plot$OTU <- rownames(ALDEx2plot)
+    ALDEx2plot %<>% dplyr::left_join(., baseMean, by = "OTU") # add mean abundance to results table
+    ALDEx2plot %<>% cbind(., tax_table(physeq_obj)[taxa_names(physeq_obj) %in% ALDEx2plot$OTU, ], stringsAsFactors = FALSE) # add taxonomy
+    # change their name to "Rare"
+    
+    ALDEx2plot[ALDEx2plot$Phylum %in% rare_phyla, ]$Phylum <-
+      'Rare' # rare_phyla is calcuted for the taxa box plots
+    ALDEx2plot$Significance <-
+      factor("Fail", levels = c("Fail", "Pass")) # define significance factor
+    ALDEx2plot$Significance[ALDEx2plot$wi.eBH < sig_level &
+                              !is.na(ALDEx2plot$wi.eBH) &
+                              abs(ALDEx2plot$effect) > LFC] <-
+      "Pass"
+    # ALDEx2plot$Significance <- as.factor(sapply(ALDEx2plot$wi.eBH, function(x) if (is.na(x) | x > 0.05) {x <- "Fail"} else {x <- "Pass"}))
+    # Rank by taxa abundance
+    ALDEx2plot$Phylum %<>%
+      factor(., levels = Taxa_rank$Phylum) %>%  # Taxa_rank is calcuted for the taxa box plots
+      fct_relevel(., "Rare", after = Inf)
+    return(ALDEx2plot)
+  }
+
+
+plot_ALDEx_tax <-
+  function(ALDEx2plot,
+           OTU_labels = FALSE,
+           Taxa = "Phylum",
+           Y_val = "effect",
+           sig_level = 0.1) {
+    pos <- position_jitter(width = 0.3, seed = 1)
+    p <-
+      ggplot(ALDEx2plot) +
+      geom_point(
+        aes_string(
+          x = Taxa,
+          y = Y_val,
+          colour = "Significance",
+          size = "baseMean"
+        ),
+        position = pos,
+        alpha = 2 / 3,
+        stroke = 0
+      ) +
+      xlab("") +
+      ylab(expression(paste("Effect size (lo", g[2], " fold change)"))) +
+      # ylab("Fold change") +
+      labs(colour = paste("Significance at \n p <", sig_level),
+           size = "Mean count (%)") +
+      theme_grey(base_size = 18,  base_family = f_name) +
+      theme(axis.text.x = element_text(
+        angle = 45.0,
+        vjust = 1,
+        hjust = 1
+      )) +
+      guides(colour = guide_legend(override.aes = list(size = 5))) +
+      scale_colour_manual(
+        values = c(
+          ggpomological:::pomological_base[[7]],
+          ggpomological:::pomological_palette[[1]]
+        )
+      ) +
+      scale_size_continuous(range = c(1, 5), breaks = c(1, 2.5, 5, 10))
+    
+    if (OTU_labels) {
+      p <- p + geom_label_repel(
+        aes(x = Taxa, y = Y_val),
+        size = 6,
+        label = sub("Seq_([0-9]+)", "\\1", ALDEx2plot[ALDEx2plot$Significance == "Pass", "OTU"]),
+        position = pos,
+        data = ALDEx2plot[ALDEx2plot$Significance == "Pass", ],
+        # nudge_x = 0.4,
+        colour = "#4a4a4a",
+        label.size = NA,
+        alpha = 0.75,
+        # fontface = 'bold',
+        box.padding = 0.80,
+        point.padding = 0.5
+        
+      )
+    }
+    return(p)
+  }
+
+
+plot_single_ASV <- function(physeq_obj = Ps_obj_filt_New_Oil_Control, vars2test = "Spill.Treatment", OTU_name = "Seq_8"){
+  # adapted from https://link.springer.com/protocol/10.1007%2F978-1-4939-8728-3_10
+  require("phyloseq")
+  require("ggplot2")
+  require("ggpomological")
+  # Get Proportion transform
+  otuRA <- transform_sample_counts(physeq_obj, function(x) x/sum(x))
+  gtab <- tibble(
+    Count = get_sample(physeq_obj, i = OTU_name),
+    Proportion = get_sample(otuRA, i = OTU_name),
+    SAMPLE_ID = unlist(get_variable(physeq_obj, "Joint.sample.name")),
+    TREATMENT = get_variable(physeq_obj, vars2test)
+  )
+  suppressWarnings({
+    mgtab <- gather(
+      gtab,
+      "Count", "Proportion",
+      key = "Type",
+      value = "Abundance",
+    )
+  })
+  # detect if pairs are both zero
+  mgtab %<>% group_by(SAMPLE_ID) %>% mutate(., BothZero := all(Abundance == 0))
+  
+  # Create a dummy min-value for display
+  mgtab %<>% group_by(Type) %>% mutate(Zero = min(Abundance[(Abundance > 0.0)], na.rm = TRUE)/10)
+  mgtab %<>% group_by(SAMPLE_ID) %>% mutate(Abundance = replace(Abundance, Abundance == 0.0, Zero[Abundance == 0.0]))
+
+  
+  pointSize <- 3
+  p <- ggplot(data = mgtab,
+             mapping = aes(
+               x = TREATMENT, 
+               y = Abundance,
+               color = TREATMENT,
+               shape = TREATMENT)) + 
+    facet_wrap(~Type, scales = "free_y") +
+    # Not both zero
+    geom_point(
+      data = filter(mgtab, BothZero == FALSE),
+      size = pointSize, 
+      alpha = 0.8) +
+    # Both Zero
+    geom_point(
+      data = filter(mgtab, BothZero == TRUE),
+      size = pointSize, 
+      alpha = 0.8,
+      position = position_jitter(width = 0.2, height = 0)) + 
+    geom_path(
+      data = filter(mgtab, BothZero == FALSE),
+      mapping = aes(group = SAMPLE_ID), 
+      color = "darkgray", 
+      size = 0.25,
+      position = position_jitter(width = 0, height = 0.001)) + 
+    geom_text(mapping = aes(label = SAMPLE_ID),
+              data = filter(mgtab, TREATMENT == levels(gtab$TREATMENT)[1] & Abundance > Zero),
+              color = "black",
+              size = 2,
+              nudge_x = -0.15) +
+    scale_colour_manual(values = pom2) +
+    # scale_y_sqrt() +
+    scale_y_log10() +
+    theme_bw() + 
+    theme(text = element_text(size = f_size),
+          legend.position = "none") +
+    scale_size_continuous(range = c(2, 5))
+    # ggtitle(paste("Abundance plot for OTU", OTU))
+  return(p)
+}
+
+plot_top_ASVs <-
+  function(physeq_obj = Ps_obj_filt_subset_New_Oil_Control,
+           ALDEx_obj = ALDEx2plot_New_Oil_Control,
+           vars2test = "Spill.Treatment",
+           rank_by = effect,
+           Ntop = 12) {
+    # adapted from https://link.springer.com/protocol/10.1007%2F978-1-4939-8728-3_10
+    require("phyloseq")
+    require("ggplot2")
+    require("ggpomological")
+    
+    # Rank OTUs according to rank_by
+    quo_rank_by = enquo(rank_by)
+    ALDEx_obj %>%
+      filter(Significance == "Pass") %>%
+      select(OTU, Phylum, baseMean, effect) %>%
+      arrange(desc(abs(!!quo_rank_by))) -> OTU_rank
+    if (nrow(OTU_rank) < Ntop)
+      Ntop <- nrow(OTU_rank)
+    OTU_rank %>% .[1:Ntop, ] %>% pull(OTU) -> OTU_names
+    
+    # Get rel. abund. transform
+    otuRA <-
+      transform_sample_counts(physeq_obj, function(x)
+        x / sum(x) * 100)
+    
+    if (is.na(OTU_names[1]) | is.null(OTU_names[1])) {
+      message("No significant differentially abundant OTUs to display")
+    } else {
+      if (length(OTU_names) == 1) {
+        gtab <- tibble(
+          OTU =  as_factor(OTU_names),
+          # Count = gather(as_tibble(get_sample(physeq_obj, i = OTU_names)))$value,
+          Rel_abundance = gather(as_tibble(get_sample(otuRA, i = OTU_names)))$value,
+          SAMPLE_ID = as_factor(rep(unlist(
+            get_variable(otuRA, "Joint.sample.name")
+          ), Ntop)),
+          TREATMENT = as_factor(rep(
+            get_variable(otuRA, vars2test), Ntop
+          ))
+        )
+      } else {
+        gtab <- tibble(
+          OTU =  as_factor(gather(as_tibble(
+            get_sample(otuRA, i =
+                         OTU_names)
+          ))$key),
+          # Count = gather(as_tibble(get_sample(otuRA, i = OTU_names)))$value,
+          Rel_abundance = gather(as_tibble(get_sample(otuRA, i = OTU_names)))$value,
+          SAMPLE_ID = as_factor(rep(unlist(
+            get_variable(otuRA, "Joint.sample.name")
+          ), Ntop)),
+          TREATMENT = as_factor(rep(
+            get_variable(otuRA, vars2test), Ntop
+          ))
+        )
+      }
+      
+      gtab %<>% group_by(SAMPLE_ID, OTU) %>% mutate(., BothZero := all(Rel_abundance == 0))
+      
+      # Create a dummy min-value for display
+      gtab %<>% group_by(OTU) %>% mutate(Zero = min(Rel_abundance[(Rel_abundance > 0.0)], na.rm = TRUE) /
+                                           10)
+      gtab %<>% group_by(SAMPLE_ID, OTU) %>% mutate(Rel_abundance = replace(Rel_abundance, Rel_abundance == 0.0, Zero[Rel_abundance == 0.0]))
+      gtab$SAMPLE_ID
+      
+      pointSize <- 3
+      p <- ggplot(
+        data = gtab,
+        mapping = aes(
+          x = TREATMENT,
+          y = Rel_abundance,
+          color = TREATMENT,
+          shape = TREATMENT
+        )
+      ) +
+        facet_wrap(~ OTU, scales = "free_y") +
+        # Not both zero
+        geom_point(
+          data = filter(gtab, BothZero == FALSE),
+          size = pointSize,
+          alpha = 0.8
+        ) +
+        # Both Zero
+        geom_point(
+          data = filter(gtab, BothZero == TRUE),
+          size = pointSize,
+          alpha = 0.8,
+          position = position_jitter(width = 0.2, height = 0)
+        ) +
+        geom_path(
+          data = filter(gtab, BothZero == FALSE),
+          mapping = aes(group = SAMPLE_ID),
+          color = "darkgray",
+          size = 0.25,
+          position = position_jitter(width = 0, height = 0.001)
+        ) +
+        geom_text(
+          mapping = aes(label = SAMPLE_ID),
+          data = filter(
+            gtab,
+            TREATMENT == levels(gtab$TREATMENT)[1] &
+              Rel_abundance > Zero
+          ),
+          color = "black",
+          size = 2,
+          nudge_x = -0.15
+        ) +
+        scale_colour_manual(values = pom2) +
+        # scale_y_sqrt() +
+        scale_y_log10() +
+        theme_bw() +
+        theme(text = element_text(size = f_size),
+              legend.position = "none") +
+        scale_size_continuous(range = c(2, 5)) +
+        ylab("Abundance (%)")
+      # ggtitle(paste("Abundance plot for OTU", OTU))
+      return(p)
+    }
+  }
+```
+
+
+
+## **Read the data and create both Globolus (faecal and faecal) phyloseq objects**
+```{r load amplicon seq data, cache = T}
+tsv_table <- read.table("16_DADA2.seqtab_nochim_decontam.tsv", sep = ",", header = TRUE, quote = "", comment.char = "", stringsAsFactors = FALSE, check.names = FALSE)
+tax_table <- read.table("16_DADA2.taxa_silva_decontam.tsv", sep = ",", header = TRUE, quote = "", comment.char = "", stringsAsFactors = FALSE, check.names = FALSE)
+sample_table <- read.csv("16_Metadata.csv", sep = ",", header = TRUE, check.names = FALSE)
+```
+
+
+##*Phyloseq objects need to have row.names*
+```{r adding row.names to data, cache = T}
+
+# Define the row names from the ASV column
+row.names(tsv_table) <- tsv_table$ASV
+ tsv_table <- tsv_table %>% dplyr::select(-c(ASV, MC1_S96, BC1_S103, NC1_S110, MC2_S123, BC2_S130, NC2_S137)) 
+
+
+row.names(tax_table) <- tax_table$ASV
+tax_table <- tax_table %>% dplyr::select(-ASV)
+  
+row.names(sample_table) <- sample_table$Sample
+sample_table <- sample_table[!(sample_table$Sample=="MC1_S96" | sample_table$Sample=="BC1_S103" | sample_table$Sample=="NC1_S110" | sample_table$Sample=="MC2_S123" | sample_table$Sample=="BC2_S130" | sample_table$Sample=="NC2_S137"),]
+sample_table <- sample_table %>% dplyr::select(-Sample)
+```
+
+
+*Transform into matrixes tsv and tax tables (sample table can be left as data frame)*
+```{r transformation of data to matrices, cache = T} 
+
+tsv_table <- as.matrix(tsv_table)
+tax_table <- as.matrix(tax_table)
+```
+
+
+
+*Transform to phyloseq objects*
+```{r pyloseq object, cache = T}
+
+
+OTU <- otu_table(tsv_table, taxa_are_rows = TRUE)
+TAX = tax_table(tax_table)
+sample = sample_data(sample_table)
+
+carbom <- merge_phyloseq(sample, OTU, TAX)
+carbom
+
+
+
+
+# Visualize data
+
+sample_names(carbom)
+
+rank_names(carbom)
+
+sample_variables(carbom)
+
+
+summarize_phyloseq(carbom)
+```
+
+
+# Faeces from Glomeris connexa
+
+*Group according to sample sources Glomeris faecal pellets*
+```{r group according to sample sources, cache = T}
+#Glomeris faecal pellets
+Glo_faecal <- subset_samples( carbom, sample_names(carbom) =="Fp-G1D_S131" | sample_names(carbom) == "Fp-G1H_S132" | sample_names(carbom) == "Fp-G1I_S133" | sample_names(carbom) == "Fp-G2B_S134" | sample_names(carbom) == "Fp-G2D_S135" | sample_names(carbom) == "Fp-G2F_S136" | sample_names(carbom) == "Fp-G3B_S138" | sample_names(carbom) == "Fp-G3F_S139" | sample_names(carbom) == "Fp-G3G_S140" | sample_names(carbom) == "Fp-G4F_S141" | sample_names(carbom) == "Fp-G4H_S142" | sample_names(carbom) == "Fp-G4J_S143")
+Glo_faecal
+
+Glo_faecal <- subset_taxa(Glo_faecal, Phylum != "unassigned")
+
+# Phyloseq object Summary
+summarize_phyloseq(Glo_faecal)
+```
+
+
+# ALDEX2
+```{r ALDEX2, cache = T}
+
+significance <- 0.5
+
+
+# Remove all ASVs that aren't in at least 2 samples or have an abundance of at least 2
+Glo_faecal_subset_pairwise_s <- filter_ASVs_by_prevalence(ps_obj = Glo_faecal, 
+                                             abund_thresh = 2, 
+                                             prev_thresh = 2)
+
+
+# Define the treatments for pairwise comparisons
+treatments_to_compare <- list(
+  c("Sterile feed", "Control"),
+  c("Antibiotics (5X)", "Control"),
+  c("Antibiotics (2X)", "Control"),
+  c("Antibiotics (5X)", "Sterile feed"),
+  c("Antibiotics (2X)", "Sterile feed"),
+  c("Antibiotics (2X)", "Antibiotics (5X)"))
+
+
+# Create an empty list to store the results
+results_list_Glo_faecal <- list()
+
+# Loop through each pair of treatments
+for (pair in treatments_to_compare) {
+  treatment1 <- pair[1]
+  treatment2 <- pair[2]
+
+# Subset the data for the pair of treatments
+  subset_data_Glo_faecal <- Glo_faecal_subset_pairwise_s %>%
+  subset_samples(Treatment %in% c(treatment1, treatment2))
+  
+# Mark rare species -------------------------------------------------------
+  Glo_faecal_subset_glom <- tax_glom(subset_data_Glo_faecal,
+                               "Phylum",
+                               NArm = TRUE)
+  Glo_faecal_subset_glom_rel <-
+    transform_sample_counts(Glo_faecal_subset_glom, function(x)
+      x / sum(x))
+  Glo_faecal_subset_glom_rel_DF <- psmelt(Glo_faecal_subset_glom_rel)
+  Glo_faecal_subset_glom_rel_DF$Phylum %<>% as.character()
+
+# Group dataframe by Phylum, calculate median rel. abundance
+  Glo_faecal_subset_glom_rel_DF %>%
+    group_by(Phylum) %>%
+    summarise(median = median(Abundance)) ->
+    medians
+
+# Find Phyla whose rel. abundance is less than 0.5%
+  Rare_phyla <- medians[medians$median <= 0.004,]$Phylum
+  
+
+# Change their name to "Rare"
+  Glo_faecal_subset_glom_rel_DF[Glo_faecal_subset_glom_rel_DF$Phylum %in% Rare_phyla,]$Phylum <-
+    'Rare'
+
+# Regroup
+Glo_faecal_subset_glom_rel_DF %>%
+  group_by(Phylum) %>%
+  summarise(Abundance = sum(Abundance)) %>%
+  arrange(desc(Abundance)) -> Taxa_rank
+
+
+# Run calc_ALDEx2 for the pair
+  ALDEx2plot_pairwise_Glo_faecal <- calc_ALDEx2(
+    physeq_obj = subset_data_Glo_faecal,
+    vars2test = "Treatment",
+    rare_phyla = Rare_phyla,
+    sig_level = significance,
+    LFC = 0
+  )
+
+# Store the result in the list with the treatment names
+  result_name <- paste(treatment1, "_vs_", treatment2)
+  results_list_Glo_faecal[[result_name]] <- ALDEx2plot_pairwise_Glo_faecal
+}
+
+
+
+saveRDS(results_list_Glo_faecal, "RDS/Glo_faecal_ALDEx_results_list.Rds")
+
+
+results_list_Glo_faecal <- readRDS("RDS/Glo_faecal_ALDEx_results_list.Rds")
+
+
+#All data frames in results_list have common columns
+common_columns <- c("diff.btw", "diff.win", "effect", "overlap", "OTU", "baseMean", "Kingdom", "Phylum", "Class", "Order", "Family", "Genus", "Species", "Significance")
+
+# Use purrr to bind the data frames in the results_list
+ALDEX_summary_Glo_faecal <- purrr::map_dfr(results_list_Glo_faecal, ~.x[, common_columns], .id = "Comparison")
+
+
+# # Save
+write_csv(ALDEX_summary_Glo_faecal, "ANCOM_BC_Table/Glo_faecal_ALDEX_summary.csv")
+
+
+ALDEX_summary_Glo_faecal %>%
+  filter(Significance == "Pass") %>%
+  dplyr::select(Comparison, OTU, baseMean, effect, Phylum, Class, Order, Family, Genus) %>%
+  arrange(desc(abs(effect))) ->
+  ALDEx2plot_pairwise_results_Glo_faecal
+
+
+# # Save
+write_csv(ALDEx2plot_pairwise_results_Glo_faecal, "ANCOM_BC_Table/Glo_faecal_ALDEX_summary_Significant.csv")
+
+
+# Plot ALDEX plot
+# Define the custom order for the "Comparison" variable
+custom_order <- c(
+  "Sterile feed _vs_ Control",
+  "Antibiotics (5X) _vs_ Control",
+  "Antibiotics (2X) _vs_ Control",
+  "Antibiotics (5X) _vs_ Sterile feed",
+  "Antibiotics (2X) _vs_ Sterile feed",
+  "Antibiotics (2X) _vs_ Antibiotics (5X)"
+)
+
+# Convert "Comparison" to a factor with the custom order
+ALDEX_summary_Glo_faecal$Comparison <- factor(ALDEX_summary_Glo_faecal$Comparison, levels = custom_order)
+
+#ALDEX_summary_Glo_faecal %<>% dplyr::select(Comparison, OTU, diff.btw, diff.win, effect, overlap, baseMean, Significance, Kingdom, Phylum, Class, Order, Family, Genus, Species)
+
+
+p1_Glo_faecal <- plot_ALDEx_tax(ALDEX_summary_Glo_faecal,
+                 OTU_labels = FALSE,
+                 sig_level = significance) +
+ 
+  facet_wrap(~ Comparison, scales = "free_y")  # Facet by "Comparison"
+
+print(p1_Glo_faecal)
+
+ggsave("ANCOM_BC_Fig/ALDEX_Glo_faecal.svg", width = 40, height = 25, units = "cm")
+
+```
