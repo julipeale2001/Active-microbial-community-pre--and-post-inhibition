@@ -288,6 +288,15 @@ ggplot( Glomeris_faecal_counts, aes(x = Day, y = `No. of faecal pellets`, colour
   geom_point() +
   geom_line() +
   scale_colour_manual(values = pom4, name = "") 
+
+
+
+# Total faeces
+Glomeris_faecal_counts %>%
+group_by(Treatment, Code) %>%
+summarise(`Total faecal pellets` = sum(`No. of faecal pellets`)) %>%
+kable(., digits = c(0, 1, 1, 1, 0, 1)) %>%
+kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"), full_width = F)
 ```
 
 **Plot time series of means**
@@ -321,6 +330,35 @@ Glomeris_faecal_counts_mean %>% # output a table of group means
   kable(., digits = c(0, 1, 1, 1, 0, 1)) %>%
   kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"), full_width = F)
 ```
+
+
+**Anova tests for total faecal production**
+```{r Glomeris total faeces aov, cache=T}
+Glomeris_faecal_counts %>% 
+  aov(`No. of faecal pellets` ~ Treatment, .) -> # fit an anova model
+  aov_total
+
+print(Anova(aov_total)) # print results
+
+
+aov_total_df <- fortify(aov_total) # make a data frame for plotting
+factor.combinations <-
+  as.numeric(factor(aov_total_df$Treatment),
+             levels = unique(as.character(paste(aov_total_df$Treatment)))
+  ) # needed for "residuals vs leverage
+mod_data_df <-
+  cbind(aov_total_df,
+        rows = 1:nrow(aov_total_df),
+        factors = factor.combinations)
+
+PlotLmResid(mod_data_df) # plot residuals
+```
+
+**Post-hoc tests for total production**
+```{r Glomeris total production post-hoc, cache=T}
+TukeyHSD(aov_total) # Compute Tukey Honest Significant Differences
+```
+
 
 
 #### Anova tests
@@ -385,4 +423,3 @@ The ANOVA model indicates significant different in the faecal production of the 
 TukeyHSD(aov_t28) # Compute Tukey Honest Significant Differences
 ```
 Also in the post-hoc tests 2X Diluted-Sterile and 5X Diluted-Sterile were found to have a significant difference in faecal production.
-
