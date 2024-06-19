@@ -299,11 +299,6 @@ ggplot(Glo_Hindgut, aes(x = Code, y = `Total Copy Numbers of 16S rRNA`, fill = T
 # Barplot for all 16S rRNA Copies/1 ng DNAs
 ggplot(Glo_Hindgut, aes(x = Code, y = `16S rRNA Copies/1 ng DNA`, fill = Treatment, group = Code)) + 
   geom_bar(stat = 'identity', position='dodge') +  xlab("Groups") + scale_y_continuous(label=scientific)
-
-# Barplot for all 16S rRNA Copies/mg sample weight
-ggplot(Glo_Hindgut, aes(x = Code, y = `16S rRNA Copies/mg sample weight`, fill = Treatment, group = Code)) + 
-  geom_bar(stat = 'identity', position='dodge') +  xlab("Groups") + scale_y_continuous(label=scientific)
-
 ```
 
 *Barplot of G. connexa hindgut bacterial mean copy numbers**
@@ -340,24 +335,6 @@ ggplot(DNA_mean, aes(x = Treatment, y = `Mean 16S rRNA Copies/1 ng DNA`)) +
   geom_bar(stat = 'identity', position='dodge', colour = pom4, aes(fill=Treatment)) +
   geom_errorbar(aes(ymin = `Mean 16S rRNA Copies/1 ng DNA` - SE, ymax = `Mean 16S rRNA Copies/1 ng DNA` + SE), width=.2,
                  position=position_dodge(.9)) + scale_y_continuous(label=scientific)
-
-# Barplot for mean 16S rRNA Copies/mg sample weight
-Glo_Hindgut %>%  # the name of the new data frame and the data frame to be summarised
-  drop_na() %>% # drop rows with missing values
-  group_by(Treatment) %>%   # the grouping variable
-  summarise(`Mean 16S rRNA Copies/mg sample weight` = mean(`16S rRNA Copies/mg sample weight`),  # calculates the mean of each group
-            StD = sd(`16S rRNA Copies/mg sample weight`), # calculates the standard deviation of each group
-            n = n(),  # calculates the sample size per group
-            SE = sd(`16S rRNA Copies/mg sample weight`)/sqrt(n())) -> # calculates the standard error of each group
-  Weight_mean
-
-
-# Create plot
-ggplot(Weight_mean, aes(x = Treatment, y = `Mean 16S rRNA Copies/mg sample weight`)) + 
-  geom_bar(stat = 'identity', position='dodge', colour = pom4, aes(fill=Treatment)) +
-  geom_errorbar(aes(ymin = `Mean 16S rRNA Copies/mg sample weight` - SE, ymax = `Mean 16S rRNA Copies/mg sample weight` + SE), width=.2,
-                 position=position_dodge(.9)) + scale_y_continuous(label=scientific)
-
 ```
 
 #### Anova tests
@@ -400,25 +377,6 @@ mod_data_df_dna <-
         factors = factor.combinations)
 
 PlotLmResid(mod_data_df_dna) # plot residuals
-
-# ANOVA for 16S rRNA Copies/mg sample weight
-Glo_Hindgut %>% 
-  aov(`16S rRNA Copies/mg sample weight` ~ Treatment, .) -> # fit an anova model
-  aov_weight
-  
-print(Anova(aov_weight)) # print results
-
-aov_weight_df <- fortify(aov_weight) # make a data frame for plotting
-factor.combinations <-
-  as.numeric(factor(aov_weight_df$Treatment),
-             levels = unique(as.character(paste(aov_weight_df$Treatment)))
-  ) # needed for "residuals vs leverage
-mod_data_df_weight <-
-  cbind(aov_weight_df,
-        rows = 1:nrow(aov_weight_df),
-        factors = factor.combinations)
-
-PlotLmResid(mod_data_df_weight) # plot residuals
 ```
 1. The ANOVA model indicates no significant differences in the total copy numbers.
 2. The ANOVA model indicates a significant different in the 16S rRNA Copies/1 ng DNA.
@@ -431,10 +389,6 @@ TukeyHSD(aov_total) # Compute Tukey Honest Significant Differences
 
 # Post-hoc tests for 16S rRNA Copies/1 ng DNA
 TukeyHSD(aov_dna)
-
-# Post-hoc tests for 16S rRNA Copies/mg sample weight
-TukeyHSD(aov_weight)
 ```
 Pairs: 
 2. There are significant differences between: 2X Diluted-Sterile and 5X Diluted-Sterile in the 16S rRNA Copies/1 ng DNA.
-3. There are significant differences between: 2X Diluted-Sterile and 5X Diluted-Sterile in the 16S rRNA Copies/mg sample weight.
