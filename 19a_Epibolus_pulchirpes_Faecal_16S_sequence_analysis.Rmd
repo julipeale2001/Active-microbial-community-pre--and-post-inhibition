@@ -1159,7 +1159,7 @@ Epi_faecal_glom_rel_DF %>%
   medians
 
 # find Phyla whose rel. abund. is less than 0.5%
-Other_phyla <- medians[medians$median <= 0.008, ]$Genus
+Other_phyla <- medians[medians$median <= 0.02, ]$Genus
 
 # change their name to "Rares"
 Epi_faecal_glom_rel_DF[Epi_faecal_glom_rel_DF$Genus %in% Other_phyla, ]$Genus <- 'Rares'
@@ -1240,9 +1240,14 @@ kable(., digits = 2, caption = "Relative abundance at genus level") %>%
 *Creating 100% abundance stacked bar plots with all the genus in Epibolus dataset*
 
 ```{r Creating 100% abundance stacked bar plots for most abundant ASVs for Genus distribution Epibolus faecal, cache = T}
+grid.colour = c(Citrobacter  = "#006400", Desulfovibrio  = "#A52A2A", Bacteroides  = "#008080", Alistipes  = "#8A2BE2", Candidatus_Symbiothrix  = "#808000", Candidatus_Methanoplasma = "#00FF00", Pseudomonas = "#00FFFF", Dysgonomonas  = "#FF00FF", Achromobacter  = "#800000", Thauera = "#FF6347", Klebsiella = "#FFFF00", Novosphingobium = "#0000FF", Mycobacterium  = "#808080", `Burkholderia-Caballeronia-Paraburkholderia` = "#87CEFA",  Rares = "#C0C0C0")
 
-Epi_faecal_b <- ggplot(data = Epi_faecal_glom_rel_DF_2plot, mapping = aes_string(x = "Treatment", y = "Abundance")) + geom_bar(aes(color = Genus, fill  = Genus), stat = "identity", position= "fill") + ylab("Relative Abundance")
-Epi_faecal_b$data$Treatment <- factor(Epi_faecal_b$data$Treatment, levels = c("Control", "Sterile feed", "Antibiotics (2X)", "Antibiotics (1X)"))
+Epi_faecal_glom_rel_DF_2plot %>%
+group_by(Treatment, Genus) %>%
+summarize(Abundance = sum(Abundance)) %>%
+ggplot(mapping = aes_string(x = "Treatment", y = "Abundance")) + geom_bar(aes(fill  = Genus), stat = "identity", position= "fill") + ylab("Relative Abundance") + scale_fill_manual(values = grid.colour) ->
+Epi_faecal_b
+Epi_faecal_b$data$Treatment <- factor(Epi_faecal_b$data$Treatment, levels = c("Control", "Sterile feed", "Antibiotics (2X)", "Antibiotics (1X)")) 
 Epi_faecal_b
 ```
 Most Abundant:
