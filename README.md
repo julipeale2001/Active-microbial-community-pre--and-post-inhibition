@@ -173,6 +173,5 @@ For analysis of microbial community from the hindguts and faeces of E. pulchripe
         items
         RDS
         
-fems-microbiology-ecology.csl
-references.bib
+
 ![image](https://github.com/julipeale2001/Active-microbial-community-pre--and-post-inhibition/assets/57350508/81b870fc-c5d9-4df2-bb02-3539dd9acaf2)
