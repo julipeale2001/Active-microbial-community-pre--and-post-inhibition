@@ -1149,15 +1149,15 @@ Glo_faecal_glom_rel_DF <- psmelt(Glo_faecal_glom_rel)
 Glo_faecal_glom_rel_DF$Genus %<>% as.character()
 
 # group dataframe by Genus, calculate median rel. abundance
-#detach(package:plyr)    
-#library(dplyr) # OR df1 <- ddply(Glo_faecal_glom_rel_DF, .(Genus), summarise, median = median(Abundance))
+detach(package:plyr)    
+library(dplyr) # OR df1 <- ddply(Glo_faecal_glom_rel_DF, .(Genus), summarise, median = median(Abundance))
 Glo_faecal_glom_rel_DF %>%
   group_by(Genus) %>%
   summarise(median = median(Abundance)) ->
   medians
 
 # find Phyla whose rel. abund. is less than 0.5%
-Other_phyla <- medians[medians$median <= 0.015, ]$Genus
+Other_phyla <- medians[medians$median <= 0.024, ]$Genus
 
 # change their name to "Rares"
 Glo_faecal_glom_rel_DF[Glo_faecal_glom_rel_DF$Genus %in% Other_phyla, ]$Genus <- 'Rares'
@@ -1237,9 +1237,15 @@ kable(., digits = 2, caption = "Relative abundance at genus level") %>%
 *Creating 100% abundance stacked bar plots with all the phyla in Glomeris dataset*
 
 ```{r Creating 100% abundance stacked bar plots for most abundant ASVs for Genus distribution Glomeris faecal, cache = T}
+grid.colour = c(Citrobacter  = "#006400", Desulfovibrio  = "#A52A2A", Bacteroides  = "#008080", Alistipes  = "#8A2BE2", Candidatus_Symbiothrix  = "#808000", Candidatus_Methanoplasma = "#00FF00", Pseudomonas = "#00FFFF", Dysgonomonas  = "#FF00FF", Achromobacter  = "#800000", Thauera = "#FF6347", Klebsiella = "#FFFF00", Novosphingobium = "#0000FF", Mycobacterium  = "#808080", `Burkholderia-Caballeronia-Paraburkholderia` = "#87CEFA", Pedobacter = "#2F4F4F", Flavobacterium = "#FF0000", Edaphobaculum = "#E9967A", Rhodanobacter = "#B8860B", Devosia = "#FFD700", Rares = "#C0C0C0")
 
-Glo_faecal_b <- ggplot(data = Glo_faecal_glom_rel_DF_2plot, mapping = aes_string(x = "Treatment", y = "Abundance")) + geom_bar(aes(color = Genus, fill  = Genus), stat = "identity", position= "fill") + ylab("Relative Abundance")
-Glo_faecal_b$data$Treatment <- factor(Glo_faecal_b$data$Treatment, levels = c("Control", "Sterile feed", "Antibiotics (5X)", "Antibiotics (2X)"))
+
+Glo_faecal_glom_rel_DF_2plot %>%
+group_by(Treatment, Genus) %>%
+summarize(Abundance = sum(Abundance)) %>%
+ggplot(mapping = aes_string(x = "Treatment", y = "Abundance")) + geom_bar(aes(fill  = Genus), stat = "identity", position= "fill") + ylab("Relative Abundance")  + scale_fill_manual(values = grid.colour) ->
+Glo_faecal_b
+Glo_faecal_b$data$Treatment <- factor(Glo_faecal_b$data$Treatment, levels = c("Control", "Sterile feed", "Antibiotics (5X)", "Antibiotics (2X)")) 
 Glo_faecal_b
 ```
 Most Abundant:
