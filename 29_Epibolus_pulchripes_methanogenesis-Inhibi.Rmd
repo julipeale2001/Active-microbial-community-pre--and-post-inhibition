@@ -276,8 +276,8 @@ Species tested: *E. pulchripes*.
 
 **Load data **
 ```{r load E. pulchripes data, cache = T}
-read_ods("29_Epibolus_pulchripes_methanogenesis Inhibition.csv",
-         sheet = "29_Epibolus_pulchripes_methanogenesis Inhibition",  col_names = TRUE) %>% # read the ODS file
+read_csv("29_Epibolus_pulchripes_methanogenesis_Inhibition.csv",
+           col_names = TRUE) %>% # read the ODS file
   mutate_at(c("Code",
               "Treatment",
               "Replicate",
@@ -378,8 +378,45 @@ The ANOVA model indicates no significant different in the weights of the animals
 ```{r t0 CH4 post-hoc, cache=T}
 TukeyHSD(aov(aov_t0)) # Compute Tukey Honest Significant Differences
 ```
-
 Also in the post-hoc tests no pair of treatment was found to have a significant difference in weights.
+
+**Building a regression model**
+```{r t0 CH4 regression model, cache=T}
+CH4_model1_d0 <- Epibolus_methane %>% 
+  filter(., Day  == 0) %>% lm(`CH4 (nmol mg-1 d-1)` ~ Treatment, .)
+print(Anova(CH4_model1_d0, type = "III"))
+# checking model assumptions
+check_model(CH4_model1_d0)
+
+CH4_emm_mod1_d0 <- emmeans(CH4_model1_d0, as.formula(paste("", "Treatment", sep = " ~ ")), weights = "equal")
+      
+# Contrasts, pairwise comparisons, tests, and confidence intervals.
+CH4_emm_mod_cons1_d0 <- contrast(CH4_emm_mod1_d0, method = "pairwise", adjust = "BH")
+print(CH4_emm_mod_cons1_d0)
+
+
+### Log transformation
+
+Epibolus_methane %<>% 
+  mutate(log_CH4 = log2(`CH4 (nmol mg-1 d-1)`))
+
+CH4_model2_d0 <- Epibolus_methane %>% 
+                 filter(., Day  == 0) %>% 
+                 lm(log_CH4 ~ Treatment,.)
+print(Anova(CH4_model2_d0, type = "III"))
+
+# checking model assumptions
+check_model(CH4_model2_d0)
+
+
+CH4_emm_mod2_d0 <- emmeans(CH4_model2_d0, as.formula(paste("", "Treatment", sep = " ~ ")), weights = "equal")
+      
+# Contrasts, pairwise comparisons, tests, and confidence intervals.
+CH4_emm_mod_cons2_d0 <- contrast(CH4_emm_mod2_d0, method = "pairwise", adjust = "BH")
+print(CH4_emm_mod_cons2_d0)
+```
+
+
 
 **Compare day 7 methane production between groups**
 To do that I'll first subtract the CH4 at time 7 from time 0 for each individual
@@ -445,6 +482,45 @@ TukeyHSD(aov(aov_t7))
 
 TukeyHSD(aov(aov_t7a))
 ```
+
+
+**Building a regression model for day 7**
+```{r t7 CH4 regression model, cache=T}
+CH4_model1_d7 <- Epibolus_methane %>% 
+  filter(., Day  == 7) %>% lm(`CH4 (nmol mg-1 d-1)` ~ Treatment, .)
+print(Anova(CH4_model1_d7, type = "III"))
+# checking model assumptions
+check_model(CH4_model1_d7)
+
+CH4_emm_mod1_d7 <- emmeans(CH4_model1_d7, as.formula(paste("", "Treatment", sep = " ~ ")), weights = "equal")
+      
+# Contrasts, pairwise comparisons, tests, and confidence intervals.
+CH4_emm_mod_cons1_d7 <- contrast(CH4_emm_mod1_d7, method = "pairwise", adjust = "BH")
+print(CH4_emm_mod_cons1_d7)
+
+
+### Log transformation
+
+Epibolus_methane %<>% 
+  mutate(log_CH4 = log2(`CH4 (nmol mg-1 d-1)`))
+
+CH4_model2_d7 <- Epibolus_methane %>% 
+                 filter(., Day  == 7) %>% 
+                 lm(log_CH4 ~ Treatment,.)
+print(Anova(CH4_model2_d7, type = "III"))
+
+# checking model assumptions
+check_model(CH4_model2_d7)
+
+
+CH4_emm_mod2_d7 <- emmeans(CH4_model2_d7, as.formula(paste("", "Treatment", sep = " ~ ")), weights = "equal")
+      
+# Contrasts, pairwise comparisons, tests, and confidence intervals.
+CH4_emm_mod_cons2_d7 <- contrast(CH4_emm_mod2_d7, method = "pairwise", adjust = "BH")
+print(CH4_emm_mod_cons2_d7)
+```
+
+
 
 **Compare day 14 methane production between groups**
 To do that I'll first subtract the weight at time 14 from time 0 for each individual
@@ -515,6 +591,42 @@ TukeyHSD(aov(aov_t14a))
 ```
 At day 14, there is a significant difference between the treatments and the control, but no significant difference between the two treatments.
 
+**Building a regression model for day 14**
+```{r t14 CH4 regression model, cache=T}
+CH4_model1_d14 <- Epibolus_methane %>% 
+  filter(., Day  == 14) %>% lm(`CH4 (nmol mg-1 d-1)` ~ Treatment, .)
+print(Anova(CH4_model1_d14, type = "III"))
+# checking model assumptions
+check_model(CH4_model1_d14)
+
+CH4_emm_mod1_d14 <- emmeans(CH4_model1_d14, as.formula(paste("", "Treatment", sep = " ~ ")), weights = "equal")
+      
+# Contrasts, pairwise comparisons, tests, and confidence intervals.
+CH4_emm_mod_cons1_d14 <- contrast(CH4_emm_mod1_d14, method = "pairwise", adjust = "BH")
+print(CH4_emm_mod_cons1_d14)
+
+
+### Log transformation
+
+Epibolus_methane %<>% 
+  mutate(log_CH4 = log2(`CH4 (nmol mg-1 d-1)`))
+
+CH4_model2_d14 <- Epibolus_methane %>% 
+                 filter(., Day  == 14) %>% 
+                 lm(log_CH4 ~ Treatment,.)
+print(Anova(CH4_model2_d14, type = "III"))
+
+# checking model assumptions
+check_model(CH4_model2_d14)
+
+
+CH4_emm_mod2_d14 <- emmeans(CH4_model2_d14, as.formula(paste("", "Treatment", sep = " ~ ")), weights = "equal")
+      
+# Contrasts, pairwise comparisons, tests, and confidence intervals.
+CH4_emm_mod_cons2_d14 <- contrast(CH4_emm_mod2_d14, method = "pairwise", adjust = "BH")
+print(CH4_emm_mod_cons2_d14)
+```
+
 
 **Compare day 21 methane production between groups**
 To do that I'll first subtract the CH4 at time 21 from time 0 for each individual
@@ -583,6 +695,44 @@ TukeyHSD(aov(aov_t21a))
 ```
 At day 21, there is a significant difference between the treatments and the control, but no signififcant difference between the two treatments.
 
+**Building a regression model for day 21**
+```{r t21 CH4 regression model, cache=T}
+CH4_model1_d21 <- Epibolus_methane %>% 
+  filter(., Day  == 21) %>% lm(`CH4 (nmol mg-1 d-1)` ~ Treatment, .)
+print(Anova(CH4_model1_d21, type = "III"))
+# checking model assumptions
+check_model(CH4_model1_d21)
+
+CH4_emm_mod1_d21 <- emmeans(CH4_model1_d21, as.formula(paste("", "Treatment", sep = " ~ ")), weights = "equal")
+      
+# Contrasts, pairwise comparisons, tests, and confidence intervals.
+CH4_emm_mod_cons1_d21 <- contrast(CH4_emm_mod1_d21, method = "pairwise", adjust = "BH")
+print(CH4_emm_mod_cons1_d21)
+
+
+### Log transformation
+
+Epibolus_methane %<>% 
+  mutate(log_CH4 = log2(`CH4 (nmol mg-1 d-1)`))
+
+CH4_model2_d21 <- Epibolus_methane %>% 
+                 filter(., Day  == 21) %>% 
+                 lm(log_CH4 ~ Treatment,.)
+print(Anova(CH4_model2_d21, type = "III"))
+
+# checking model assumptions
+check_model(CH4_model2_d21)
+
+
+CH4_emm_mod2_d21 <- emmeans(CH4_model2_d21, as.formula(paste("", "Treatment", sep = " ~ ")), weights = "equal")
+      
+# Contrasts, pairwise comparisons, tests, and confidence intervals.
+CH4_emm_mod_cons2_d21 <- contrast(CH4_emm_mod2_d21, method = "pairwise", adjust = "BH")
+print(CH4_emm_mod_cons2_d21)
+```
+
+
+
 **Compare day 35 methane production between groups**
 To do that I'll first subtract the CH4 at time 35 from time 0 for each individual
 ```{r t35 CH4 aov, cache=T}
@@ -649,6 +799,44 @@ TukeyHSD(aov(aov_t35))
 TukeyHSD(aov(aov_t35a))
 ```
 At day 35, there is a significant difference between the treatments and the control, but no signififcant difference between the two treatments.
+
+**Building a regression model for day 35**
+```{r t35 CH4 regression model, cache=T}
+CH4_model1_d35 <- Epibolus_methane %>% 
+  filter(., Day  == 35) %>% lm(`CH4 (nmol mg-1 d-1)` ~ Treatment, .)
+print(Anova(CH4_model1_d35, type = "III"))
+# checking model assumptions
+check_model(CH4_model1_d35)
+
+CH4_emm_mod1_d35 <- emmeans(CH4_model1_d35, as.formula(paste("", "Treatment", sep = " ~ ")), weights = "equal")
+      
+# Contrasts, pairwise comparisons, tests, and confidence intervals.
+CH4_emm_mod_cons1_d35 <- contrast(CH4_emm_mod1_d35, method = "pairwise", adjust = "BH")
+print(CH4_emm_mod_cons1_d35)
+
+
+### Log transformation
+
+Epibolus_methane %<>% 
+  mutate(log_CH4 = log2(`CH4 (nmol mg-1 d-1)`))
+
+CH4_model2_d35 <- Epibolus_methane %>% 
+                 filter(., Day  == 35) %>% 
+                 lm(log_CH4 ~ Treatment,.)
+print(Anova(CH4_model2_d35, type = "III"))
+
+# checking model assumptions
+check_model(CH4_model2_d35)
+
+
+CH4_emm_mod2_d35 <- emmeans(CH4_model2_d35, as.formula(paste("", "Treatment", sep = " ~ ")), weights = "equal")
+      
+# Contrasts, pairwise comparisons, tests, and confidence intervals.
+CH4_emm_mod_cons2_d35 <- contrast(CH4_emm_mod2_d35, method = "pairwise", adjust = "BH")
+print(CH4_emm_mod_cons2_d35)
+```
+
+
 
 **Compare day 49 methane production between groups**
 To do that I'll first subtract the CH4 at time 49 from time 0 for each individual
@@ -717,6 +905,44 @@ TukeyHSD(aov(aov_t49a))
 ```
 At day 49, there is no significant difference between the treatments and the control.
 
+**Building a regression model for day 35**
+```{r t35 CH4 regression model, cache=T}
+CH4_model1_d35 <- Epibolus_methane %>% 
+  filter(., Day  == 35) %>% lm(`CH4 (nmol mg-1 d-1)` ~ Treatment, .)
+print(Anova(CH4_model1_d35, type = "III"))
+# checking model assumptions
+check_model(CH4_model1_d35)
+
+CH4_emm_mod1_d35 <- emmeans(CH4_model1_d35, as.formula(paste("", "Treatment", sep = " ~ ")), weights = "equal")
+      
+# Contrasts, pairwise comparisons, tests, and confidence intervals.
+CH4_emm_mod_cons1_d35 <- contrast(CH4_emm_mod1_d35, method = "pairwise", adjust = "BH")
+print(CH4_emm_mod_cons1_d35)
+
+
+### Log transformation
+
+Epibolus_methane %<>% 
+  mutate(log_CH4 = log2(`CH4 (nmol mg-1 d-1)`))
+
+CH4_model2_d35 <- Epibolus_methane %>% 
+                 filter(., Day  == 35) %>% 
+                 lm(log_CH4 ~ Treatment,.)
+print(Anova(CH4_model2_d35, type = "III"))
+
+# checking model assumptions
+check_model(CH4_model2_d35)
+
+
+CH4_emm_mod2_d35 <- emmeans(CH4_model2_d35, as.formula(paste("", "Treatment", sep = " ~ ")), weights = "equal")
+      
+# Contrasts, pairwise comparisons, tests, and confidence intervals.
+CH4_emm_mod_cons2_d35 <- contrast(CH4_emm_mod2_d35, method = "pairwise", adjust = "BH")
+print(CH4_emm_mod_cons2_d35)
+```
+
+
+
 **Compare day 63 methane production between groups**
 To do that I'll first subtract the CH4 at time 63 from time 0 for each individual
 ```{r t63 CH4 aov, cache=T}
@@ -783,3 +1009,40 @@ TukeyHSD(aov(aov_t63))
 TukeyHSD(aov(aov_t63a))
 ```
 At day 63, there is no significant difference between the treatments and the control.
+
+
+**Building a regression model for day 63**
+```{r t63 CH4 regression model, cache=T}
+CH4_model1_d63 <- Epibolus_methane %>% 
+  filter(., Day  == 63) %>% lm(`CH4 (nmol mg-1 d-1)` ~ Treatment, .)
+print(Anova(CH4_model1_d63, type = "III"))
+# checking model assumptions
+check_model(CH4_model1_d63)
+
+CH4_emm_mod1_d63 <- emmeans(CH4_model1_d63, as.formula(paste("", "Treatment", sep = " ~ ")), weights = "equal")
+      
+# Contrasts, pairwise comparisons, tests, and confidence intervals.
+CH4_emm_mod_cons1_d63 <- contrast(CH4_emm_mod1_d63, method = "pairwise", adjust = "BH")
+print(CH4_emm_mod_cons1_d63)
+
+
+### Log transformation
+
+Epibolus_methane %<>% 
+  mutate(log_CH4 = log2(`CH4 (nmol mg-1 d-1)`))
+
+CH4_model2_d63 <- Epibolus_methane %>% 
+                 filter(., Day  == 63) %>% 
+                 lm(log_CH4 ~ Treatment,.)
+print(Anova(CH4_model2_d63, type = "III"))
+
+# checking model assumptions
+check_model(CH4_model2_d63)
+
+
+CH4_emm_mod2_d63 <- emmeans(CH4_model2_d63, as.formula(paste("", "Treatment", sep = " ~ ")), weights = "equal")
+      
+# Contrasts, pairwise comparisons, tests, and confidence intervals.
+CH4_emm_mod_cons2_d63 <- contrast(CH4_emm_mod2_d63, method = "pairwise", adjust = "BH")
+print(CH4_emm_mod_cons2_d63)
+```
