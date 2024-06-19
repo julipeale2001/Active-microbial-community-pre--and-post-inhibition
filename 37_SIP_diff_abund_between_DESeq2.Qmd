@@ -75,7 +75,7 @@ knitr::opts_chunk$set(
   fig.path = fig.path
 )
 f_name <- "DejaVu Sans" #sub("\\s//", "", f_name)
-f_size <- 12
+f_size <- 16
 font_import(pattern = "DejaVuSans\\.", prompt = FALSE)
 loadfonts() # registers fonts
 theme_set(theme_bw(base_size = f_size, base_family = f_name))
@@ -88,7 +88,8 @@ theme_set(theme_bw(base_size = f_size, base_family = f_name))
 plot_SIP_fractions <- function(qPCR_df, x = "Density..g.ml.1.", y = "qPCR_fraction", colour = "Replicate", group = "Label..13C.", facet.arg1 = "Day", facet.arg2 = "Species",
                              xticks = seq(1.71, 1.85, 0.02), yticks = seq(0, 80, 10)){
   ggplot(qPCR_df, aes(x = !!sym(x), y = !!sym(y))) + 
-    geom_point(aes(colour = as.factor(!!sym(colour)), shape = !!sym(group)), size = 3, alpha = 1/2) +
+    geom_point2(aes(shape = !!sym(group)), size = 4, alpha = 1/2, colour = "black") +
+    geom_point2(aes(colour = as.factor(!!sym(colour)), shape = !!sym(group)), size = 3) +
     geom_line(aes(colour = as.factor(!!sym(colour))), alpha = 1/2, show.legend = F) +
     facet_grid(reformulate(facet.arg1, facet.arg2), scale = 'free') +
     scale_color_manual(values = paletteer_d("ggpomological::pomological_palette")[c(2, 4, 3, 1, 5:9)][1:nrow(unique(qPCR_df[colour]))]) +
@@ -453,7 +454,7 @@ prep_DESeq_data <- function(DESeq_results, ps_obj, sig_level = alpha_thresh, LFC
   return(DESeq2plot)
 }
 
-plot_DESeq <- function(DESeq_results, ps_obj, sig_level = alpha_thresh, LFC = LFC_thresh, rank = "Phylum", rare_thresh = 0.0045, ASV_labels = FALSE, Y_val = "log2FoldChange", plot_title = "") {
+plot_DESeq <- function(DESeq_results, ps_obj, sig_level = alpha_thresh, LFC = LFC_thresh, rank = "Phylum", rare_thresh = 0.0045, ASV_labels = FALSE, Y_val = "log2FoldChange", plot_title = "", plot_empty = "FALSE") {
   require(ggplot2)
   require(ggrepel)
   require(ggtext)
@@ -502,6 +503,7 @@ plot_DESeq <- function(DESeq_results, ps_obj, sig_level = alpha_thresh, LFC = LF
           legend.direction = "horizontal", 
           legend.position = 'bottom') +
     guides(colour = guide_legend(override.aes = list(size = 5))) +
+    {if(plot_empty)scale_x_discrete(drop = FALSE)} + # plot also ranks without data
     # scale_colour_manual(values = c(ggpomological:::pomological_base[[7]], ggpomological:::pomological_palette[[1]])) +
     scale_colour_manual(values = c("#2b323f", "#c03728")) +
     scale_size_continuous(name = "Mean abundance (%)",
@@ -681,15 +683,18 @@ plot_ggtree <- function(ps_obj,
     geom_treescale(fontsize = 2) +
     guides(colour = guide_legend(nrow = l_rows,
                                  byrow = TRUE,
+                                 title.position = "top"),
+           size = guide_legend(nrow = 2,
+                                 byrow = TRUE,
                                  title.position = "top")) +
-    theme_tree(legend.title = element_markdown(size = f_size - 4),
+    theme_tree(legend.title = element_markdown(size = f_size - 6),
                legend.position = "bottom", 
                legend.key.size = unit(0.1, "cm"),
-               legend.text = element_text(size = f_size - 6, face = "italic"),
+               legend.text = element_text(size = f_size - 8, face = "italic"),
                legend.box = "vertical", 
                legend.margin = margin(),
                plot.margin = unit(c(0.1, 0.1, 0.1, 0.1), "cm"),
-               plot.title = element_text(size = f_size - 2, face = "italic")) +
+               plot.title = element_text(size = f_size - 4, face = "italic")) +
     # scale_colour_manual(values = mycolours) +
     ggtitle(Taxa2plot)
   return(p_tree)
@@ -750,21 +755,21 @@ labels <- setNames(glue("<i style='colors:{colors}'>{labels2draw}</i>"), labels2
     facet_wrap(vars(!!sym("Species")), 
                labeller = as_labeller(labels),
                nrow = 1) +
-    theme(axis.text.x = element_markdown(size = f_size - 6,
+    theme(axis.text.x = element_markdown(size = f_size - 8,
                                          angle = 45, 
                                          vjust = 1, 
                                          hjust = 1),
           panel.grid.major = element_blank(),
           axis.title.y = element_blank(),
-          axis.title.x = element_markdown(size = f_size - 4),
+          axis.title.x = element_markdown(size = f_size - 6),
           axis.text.y = element_blank(),
           axis.ticks.y = element_blank(),
           strip.background = element_blank(),
-          strip.text =  element_markdown(size = f_size - 6),
+          strip.text =  element_markdown(size = f_size - 8),
           legend.key.size = unit(0.3, "cm"),
-          legend.title = element_markdown(size = f_size - 4),
+          legend.title = element_markdown(size = f_size - 6),
           legend.position = "bottom",
-          legend.text = element_text(size = f_size - 6),
+          legend.text = element_text(size = f_size - 8),
           plot.margin = unit(c(0.1, 0.1, 0.1, 0.1), "cm")) ->
     HM_plot
   
@@ -839,8 +844,8 @@ abund_thresh <- 100
 rare_thresh <- 0.0045
 vars2test <- "Label..13C."
 ref_level <- "Unlabelled"
-data_path <- "./34_DADA2_pseudo/"
-# Metadata_table <- "./AnCUE_Metadata_decontam.csv"
+data_path <- "./37_DADA2_pseudo/"
+Metadata_table <- "./37_Millipedes_SIP_metadata.csv"
 # Seq_table <- "DADA2.seqtab_nochim_decontam.tsv"
 # Seq_file <- "DADA2.Seqs_decontam.fa"
 Proj_name <- "Millipedes_SIP"
@@ -866,6 +871,13 @@ readRDS(paste0(data_path, Ps_file)) %>%
                  phy_tree(Tree)
   ) -> Ps_obj_SIP 
 
+# Add 18S data
+read_delim(Metadata_table,
+           delim = ",",
+           trim_ws = TRUE) %>% 
+  dplyr::select("merged_sample_name", `18S_copies (undiluted RNA)`) ->
+  fungi_quant
+
 # Save filtered phyloseq object for PICRUSt
 #Ps_obj_Labelled <- subset_samples(Ps_obj_SIP, Label..13C. == 'Labelled')
 #seqs <- refseq(Ps_obj_Labelled)
@@ -875,6 +887,12 @@ readRDS(paste0(data_path, Ps_file)) %>%
 # Then, run the seqs file through this one liner to clean it up and create a fasta file.
 # grep -v '^x' Ps_obj_Labelled_seqs.tsv | awk '{print ">"$1"\n"$2}' > Ps_obj_Labelled_seqs.fa; rm Ps_obj_Labelled_seqs.tsv
 
+
+get_variable(Ps_obj_SIP) %>%  
+  left_join(., fungi_quant, by = "merged_sample_name") %>% 
+  pull(`18S_copies (undiluted RNA)`) ->
+  sample_data(Ps_obj_SIP)$FungiQuant
+  
 sample_data(Ps_obj_SIP)$Group <- factor(paste0(sample_data(Ps_obj_SIP)$Label..13C., sample_data(Ps_obj_SIP)$Density.zone))
 sample_data(Ps_obj_SIP)$Day <- factor(sample_data(Ps_obj_SIP)$Day, levels = c("3", "7", "14", "21"))
 sample_data(Ps_obj_SIP)$Label..13C. <- factor(sample_data(Ps_obj_SIP)$Label..13C., levels = c("Labelled", "Unlabelled")) 
@@ -884,8 +902,9 @@ sample_data(Ps_obj_SIP)$Density.zone <- factor(ifelse(sample_data(Ps_obj_SIP)$De
 
 Ps_obj_SIP %>% 
   get_variable() %>% 
-  group_by(Species, Day, Label..13C., Replicate) %>% 
-  mutate(qPCR_fraction = X16S_copies..undiluted.RNA./sum(X16S_copies..undiluted.RNA.) * 10^6) -> # times 10^6 is important to not end up with very small fractions!
+  group_by(!!sym(Var3), !!sym(Var2), !!sym(Var4), !!sym(Var1)) %>% 
+  mutate(qPCR_fraction = X16S_copies..undiluted.RNA./sum(X16S_copies..undiluted.RNA.) * 10^6) %>% # times 10^6 is important to not end up with very small fractions! 
+  mutate(fungi_quant_fraction = FungiQuant/sum(FungiQuant) * 10^6) -> 
   sample_data(Ps_obj_SIP)
 
 Ps_obj_abs <- Ps_obj_SIP
@@ -912,9 +931,10 @@ First I'll plot the 16S copy numbers vs density
 #| fig.width = 10
 
 get_variable(Ps_obj_abs) %>% 
-  mutate(qPCR_fraction = qPCR_fraction/10^4) %>% # bring it back from ppm to %
+  mutate(qPCR_fraction = qPCR_fraction/10^4,
+         fungi_quant_fraction = fungi_quant_fraction/10^4) %>% # bring it back from ppm to %
   mutate(Rep_label = paste(Replicate, Label..13C.)) %>% 
-  mutate(Rep_label = factor(recode(Rep_label, 
+  mutate(Rep_label = factor(dplyr::recode(Rep_label, 
                             `1 Labelled` = "1", 
                             `2 Labelled` = "2", 
                             `3 Labelled` = "3",
@@ -922,7 +942,16 @@ get_variable(Ps_obj_abs) %>%
                             levels = c("Unlabelled", "1", "2", "3"))) %>% 
   mutate(Species = recode_factor(Species, `Epibolus pulchripes` = "*E. pulchripes*", `Glomeris connexa` = "*G. connexa*")) ->
   qPCR_df
-plot_SIP_fractions(qPCR_df, colour = "Rep_label", xticks = seq(1.71, 1.85, by = 0.03)) 
+
+plot_SIP_fractions(qPCR_df, 
+                   colour = "Rep_label", 
+                   xticks = seq(1.71, 1.85, by = 0.03)) 
+
+plot_SIP_fractions(qPCR_df, 
+                   y = "fungi_quant_fraction", 
+                   colour = "Rep_label", 
+                   xticks = seq(1.71, 1.85, by = 0.03)) +
+    labs(x = "Density (g ml<sup>-1</sup>)", y = "18S rRNA fungal copies (%)")
 ```
 
 ### Beta Diversity Join Analysis
@@ -1199,6 +1228,7 @@ Because the DESeq2 models will be run on each gradient separately, we need to su
 #| label = "subset dataset",
 #| cache = T
 # split, ignore time points (for labelled ASV plots)
+## IT MIGHT BE POSSIBLE TO OMIT THE LABEL..13C. HERE
 test_expr_1 <- "(Species == '${Species}' & Label..13C. == 'Unlabelled') | (Species == '${Species}'  & Label..13C. == '${Label..13C.}')"
 params_1 <- get_treatment_params(Ps_obj_abs, c("Species",
                                      "Label..13C."),
@@ -1635,7 +1665,7 @@ knitr::include_graphics(paste0(fig.path, "Glomeris_DESeq2", ".png"))
 
 DESeq_plots_con <- map(seq(length(DESeq_res_SIP_byTime_LFC_sig_prev_con_l)), 
                         ~plot_DESeq(DESeq_res_SIP_byTime_LFC_sig_prev_con_l[.x],
-                                    Ps_obj_abs, plot_title = ""))
+                                    Ps_obj_abs, plot_title = "", plot_empty = "TRUE"))
 
 design <- "
 1234
@@ -1645,24 +1675,25 @@ design <- "
 
 All_DESeq <- ((DESeq_plots_con[[3]] + 
                    theme(legend.position = "none",
-                         axis.text.x = element_blank()) +
+                        axis.text.x = element_blank(),
+                         axis.title.y = element_blank()) +
                    ylim(-20, 20) +
                    facet_grid(. ~ Day)) +
                   (DESeq_plots_con[[4]] + 
                      theme(legend.position = "none", 
-                           axis.text.x = element_blank(), 
+                          axis.text.x = element_blank(),
                            axis.title.y = element_blank()) +
                    ylim(-20, 20) +
                    facet_grid(. ~ Day)) +
                   (DESeq_plots_con[[1]] + 
                      theme(legend.position = "none", 
-                           axis.text.x = element_blank(), 
+                          axis.text.x = element_blank(),
                            axis.title.y = element_blank()) +
                    ylim(-20, 20) +
                    facet_grid(. ~ Day)) +
                   (DESeq_plots_con[[2]] + 
                      theme(legend.position = "none", 
-                           axis.text.x = element_blank(),
+                          axis.text.x = element_blank(),
                            axis.title.y = element_blank(),
                            strip.text.y = element_text(face = "italic")) +
                    ylim(-20, 20) +
@@ -1690,10 +1721,11 @@ All_DESeq <- ((DESeq_plots_con[[3]] +
 save_figure(paste0(fig.path, "All_DESeq"), 
             All_DESeq, 
             pwidth = 14, 
-            pheight = 12,
+            pheight = 10,
             dpi = 600)
 
 knitr::include_graphics(paste0(fig.path, "All_DESeq", ".png"))
+
 ```
 
 #### Plot labelled ASVs
@@ -1987,4 +2019,3 @@ sessioninfo::session_info() %>%
 ```
 
 ## References
-
