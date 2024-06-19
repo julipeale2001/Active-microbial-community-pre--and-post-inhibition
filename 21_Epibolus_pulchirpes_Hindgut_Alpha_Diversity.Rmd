@@ -183,9 +183,9 @@ pom2 <- c(ggpomological:::pomological_base[[7]], ggpomological:::pomological_pal
 ## **Read the data and create Epibolus hindgut phyloseq objects**
 ```{r load amplicon seq data, cache = T}
 # load your data 
-tsv_table <- read.table("16_DADA2.seqtab_nochim_decontam.tsv", sep = ",", header=T,quote = "", comment.char = "", stringsAsFactors=F, check.names=FALSE)
-tax_table <- read.table("16_DADA2.taxa_silva_decontam.tsv", sep = ",", header=T,quote = "", comment.char = "", stringsAsFactors = F, check.names=FALSE)
-sample_table <- read.csv("16_Metadata.csv",  sep = ",", header=T, check.names=FALSE)
+tsv_table <- read.table("16_DADA2.seqtab_nochim_decontam.tsv", sep = ",", header = T, quote = "", comment.char = "", stringsAsFactors = F, check.names = FALSE)
+tax_table <- read.table("16_DADA2.taxa_silva_decontam.tsv", sep = ",", header = T, quote = "", comment.char = "", stringsAsFactors = F, check.names = FALSE)
+sample_table <- read.csv("16_Metadata.csv",  sep = ",", header = T, check.names = FALSE)
 ```
 
 
@@ -521,6 +521,5 @@ p_Epi_hindgut +
 
 ggsave("Epi_hindgut_alpha_diversity.svg",width = 20, height = 35, units = "cm")
 ```
-
 
 
