@@ -1,4 +1,4 @@
-# https://zenodo.org/doi/10.5281/zenodo.13383696
+# [![DOI](https://zenodo.org/badge/692083872.svg)](https://zenodo.org/doi/10.5281/zenodo.13383696)
 
 # Active Microbial Community Analysis Pre- and Post-Inhibition
 
